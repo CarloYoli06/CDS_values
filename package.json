@@ -1,0 +1,30 @@
+{
+  "name": "SAP",
+  "version": "1.0.0",
+  "description": "A simple CAP project.",
+  "dependencies": {
+    "@dotenvx/dotenvx": "github:dotenvx/dotenvx",
+    "@sap/cds": "9",
+    "cors": "2.8.5",
+    "express": "4.21.2",
+    "mongoose": "8.19.0"
+  },
+  "devDependencies": {
+    "@cap-js/sqlite": "2"
+  },
+  "scripts": {
+    "build": "cds build",
+    "dev": "cds watch",
+    "start": "cds-serve"
+  },
+  "files": [
+    "src"
+  ],
+  "cds": {
+    "folders": {
+      "db": "src/api/models",
+      "srv": "src/api/routes"
+    }
+  },
+  "private": true
+}
