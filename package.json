@@ -26,5 +26,6 @@
       "srv": "src/api/routes"
     }
   },
+  "type": "module",
   "private": true
 }

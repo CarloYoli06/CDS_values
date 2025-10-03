@@ -1,13 +1,11 @@
 
 // src/config/connectToMongoDB.config.js
-const mongoose = require('mongoose');
-const configX = require('./dotenvXConfig');
+import mongoose from 'mongoose';
+import configX from './dotenvXConfig.js';
 
 (async () => { 
     try { 
         const db = await mongoose.connect(configX.CONNECTION_STRING, { 
-            // useNewUrlParser: true,  // Ya no es necesario en Mongoose 6+
-            // useUnifiedTopology: true,  // Ya no es necesario en Mongoose 6+
             dbName: configX.DATABASE 
         }); 
         console.log('Database is connected to: ', db.connection.name); 
@@ -16,4 +14,4 @@ const configX = require('./dotenvXConfig');
     } 
 })();
 
-module.exports = { mongoose };
+export default mongoose;
