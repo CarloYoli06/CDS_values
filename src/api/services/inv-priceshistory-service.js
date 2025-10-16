@@ -1,14 +1,7 @@
 import { BITACORA, DATA, AddMSG, OK, FAIL } from '../../middlewares/respPWA.handler.js';
 import ztpriceshistory from '../models/mongodb/ztpriceshistory.js';
 
-export default {
-    GetAllPricesHistory,
-    AddOnePricesHistory,
-    UpdateOnePricesHistory,
-    DeleteOnePricesHistory
-};
-
-export async function GetAllPricesHistory(req) {
+async function GetAllPricesHistory(req) {
     let bitacora = BITACORA();
     let data = DATA();
 
@@ -49,7 +42,7 @@ export async function GetAllPricesHistory(req) {
     }
 }
 
-export async function AddOnePricesHistory(req) {
+async function AddOnePricesHistory(req) {
     let bitacora = BITACORA();
     let data = DATA();
 
@@ -98,7 +91,7 @@ export async function AddOnePricesHistory(req) {
     }
 }
 
-export async function UpdateOnePricesHistory(req) {
+async function UpdateOnePricesHistory(req) {
     let bitacora = BITACORA();
     let data = DATA();
 
@@ -149,7 +142,7 @@ export async function UpdateOnePricesHistory(req) {
     }
 }
 
-export async function DeleteOnePricesHistory(req) {
+async function DeleteOnePricesHistory(req) {
     let bitacora = BITACORA();
     let data = DATA();
 
@@ -184,3 +177,27 @@ export async function DeleteOnePricesHistory(req) {
         return req.error(500, data.messageUSR);
     }
 }
+
+async function crudPricesHistory(req) {
+    const action = req.req.query?.action;
+    switch (action) {
+        case 'getall':
+            return await GetAllPricesHistory(req);
+        case 'addone':
+            return await AddOnePricesHistory(req);
+        case 'updateone':
+            return await UpdateOnePricesHistory(req);
+        case 'deleteone':
+            return await DeleteOnePricesHistory(req);
+        default:
+            let bitacora = BITACORA();
+            let data = DATA();
+            data.messageDEV = `Accion no valida: ${action}`;
+            data.messageUSR = "Acción no reconocida por el sistema.";
+            bitacora = AddMSG(bitacora, data, 'FAIL', 400);
+            FAIL(bitacora);
+            return req.error(400, data.messageUSR);
+    }
+}
+
+export default { crudPricesHistory };
