@@ -158,6 +158,25 @@ const runOperation = async (opDetails, session) => {
         };
     } else if (action === 'UPDATE') {
         const { id, updates } = payload;
+
+        // --- INICIO DE LA VALIDACIÓN ---
+        // Validar que IDVALORPA exista si se está actualizando un 'valor'
+        if (collection === 'values' && updates.IDVALORPA) {
+            
+            // 1. Evitar que un valor sea su propio padre
+            if (id === updates.IDVALORPA) {
+                throw new Error(`Un valor no puede ser su propio padre (IDVALORPA).|INVALID_OPERATION|${id}`);
+            }
+            // 2. Buscar si el valor padre existe en la base de datos
+            const parentValue = await Valor.findOne({ IDVALOR: updates.IDVALORPA }).session(session);
+            
+            // 3. Si no existe, lanzar un error
+            if (!parentValue) {
+                throw new Error(`El IDVALORPA '${updates.IDVALORPA}' no existe en la colección de valores.|NOT_FOUND|${id}`);
+            }
+        }
+        // --- FIN DE LA VALIDACIÓN ---
+
         const updatedDoc = await model.findOneAndUpdate({ [idField]: id }, updates, { new: true, session });
         if (!updatedDoc) {
             throw new Error(`Documento con ${idField}=${id} no encontrado.|NOT_FOUND|${id}`);
