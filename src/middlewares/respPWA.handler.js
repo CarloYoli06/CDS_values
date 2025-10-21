@@ -151,7 +151,7 @@ export const        OK = (bitacora) => {
 
     return {
         success         : bitacora.success      || true,
-        code          : bitacora.status       || 500,
+        status          : bitacora.status       || 500,
         process         : bitacora.process      || 'No Especificado',
         messageUSR      : bitacora.messageUSR   || 'No Especificado',
         messageDEV      : bitacora.messageDEV   || 'No Especificado',
@@ -178,7 +178,7 @@ export const FAIL = (bitacora) => {
 
     return {
         success         : bitacora.success      || false,
-        code          : bitacora.status       || 500,
+        status          : bitacora.status       || 500,
         process         : bitacora.process      || 'No Especificado',
         messageUSR      : bitacora.messageUSR   || 'No Especificado',
         messageDEV      : bitacora.messageDEV   || 'No Especificado',

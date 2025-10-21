@@ -1,203 +1,311 @@
+import PricesHistory from "../models/mongodb/ztpriceshistory.js";
+//FIC: Imports fuctions/methods
 import { BITACORA, DATA, AddMSG, OK, FAIL } from '../../middlewares/respPWA.handler.js';
-import ztpriceshistory from '../models/mongodb/ztpriceshistory.js';
+// import { x } from "@sap/cds/lib/utils/tar-lib.js";
+/* EndPoint: localhost:8080/api/inv/crud?ProcessType='AddMany'&LoggedUser=FIBARRAC&DBServer=MongoDB/AzureCosmos  */
 
-async function GetAllPricesHistory(req) {
-    let bitacora = BITACORA();
-    let data = DATA();
+export default async function crudPricesHistory(req) {
+  
+  let bitacora = BITACORA();
+  let data = DATA();
+  
+  //let ProcessType = req.req.query?.ProcessType;
+  let {ProcessType} = req.req.query;
+  const {LoggedUser} = req.req.query;
+  const {DBServer} = req.req.query;
 
-    try {
-        data.api = 'GetAllPricesHistory';
-        data.dataReq = req.data;
+  //FIC: get query params
+  //let params = req.req.query;
+   const params = {
+        //WithImagesURL : req.req.query?.WithImagesURL
+        paramsQuery : req.req.query,
+        paramString : req.req.query ? new URLSearchParams(req.req.query).toString().trim() : '',
+        body : req.req.body
+    };
+  //FIC: get params of the service and convert in string
+  //let paramString = req.req.query ? new URLSearchParams(req.req.query).toString().trim() : '';
+  //FIC: get body 
+  //const body = req.req.body;
 
-        const idPrice = parseInt(req.req.query?.IdPrice);
-        const initVolume = parseInt(req.req.query?.initVolume);
-        const endVolume = parseInt(req.req.query?.endVolume);
+  //FIC: start fill some properties of the bitacora
+  bitacora.loggedUser = LoggedUser;
+  bitacora.processType = ProcessType;
+  bitacora.dbServer = DBServer;
 
-        let priceHistory;
+  try {
 
-        if (idPrice > 0) {
-            priceHistory = await ztpriceshistory.findOne({ ID: idPrice }).lean();
-        } else if (initVolume >= 0 && endVolume >= 0) {
-            priceHistory = await ztpriceshistory.find({
-                VOLUME: {
-                    $gte: initVolume, $lte: endVolume
-                }
-            }).lean();
-        } else {
-            priceHistory = await ztpriceshistory.find().lean();
-        }
+    switch (ProcessType) {
 
-        data.dataRes = priceHistory;
-        data.messageUSR = 'Precios obtenidos correctamente.';
-        bitacora = AddMSG(bitacora, data, 'OK', 200);
-        req.reply.code = 200;
-        return OK(bitacora);
+      case 'GetOne' || 'GetSome' || 'GetAll':
+            //FIC: Get One, Some or All Prices History Method
+            //------------------------------------------------------           
+            bitacora = await GetFiltersPricesHistoryMethod(bitacora, params)
+            .then((bitacora) => {
+                if (!bitacora.success) {
+                    bitacora.finalRes = true;
+                    throw bitacora;
+                };
+                //let countData = bitacora.countData - 1;
+                //newInventorieItem = bitacora.data[countData].dataRes;
+                return bitacora;
+            });
+        break;
 
-    } catch (error) {
-        data.messageDEV = error.toString();
-        data.messageUSR = "Error al obtener los precios.";
-        bitacora = AddMSG(bitacora, data, 'FAIL', 500);
-        FAIL(bitacora);
-        return req.error(500, data.messageUSR);
-    }
-}
+      // case 'GetOne':
+      
+      //   break;
 
-async function AddOnePricesHistory(req) {
-    let bitacora = BITACORA();
-    let data = DATA();
+      // case 'GetSome':
+      
+      //   break;
 
-    try {
-        data.api = 'AddOnePricesHistory';
-        data.dataReq = req.data.prices;
-
-        const newPrices = req.data.prices;
-
-        // Validación: Asegurarse de que newPrices es un array.
-        if (!Array.isArray(newPrices)) {
-            data.messageDEV = `El formato de entrada es incorrecto. Se esperaba un array en la propiedad 'prices', pero se recibió: ${typeof newPrices}.`;
-            data.messageUSR = "El formato de los datos enviados es incorrecto. Se debe enviar un array de precios.";
-            bitacora = AddMSG(bitacora, data, 'FAIL', 400); // 400 Bad Request
-            FAIL(bitacora);
-            return req.error(400, data.messageUSR);
-        }
-
-        // Validar si alguno de los IDs ya existe
-        const newPriceIds = newPrices.map(p => p.ID);
-        const existingPrices = await ztpriceshistory.find({ ID: { $in: newPriceIds } }).lean();
-
-        if (existingPrices.length > 0) {
-            const existingIds = existingPrices.map(p => p.ID);
-            data.messageDEV = `Intento de insertar IDs duplicados: ${existingIds.join(', ')}`;
-            data.messageUSR = `Uno o más precios ya existen con los IDs proporcionados: ${existingIds.join(', ')}.`;
-            bitacora = AddMSG(bitacora, data, 'FAIL', 409); // 409 Conflict
-            FAIL(bitacora);
-            return req.error(409, data.messageUSR);
-        }
-
-        const pricesHistory = await ztpriceshistory.insertMany(newPrices, { ordered: true });
-
-        data.dataRes = JSON.parse(JSON.stringify(pricesHistory));
-        data.messageUSR = 'Precios añadidos correctamente.';
-        bitacora = AddMSG(bitacora, data, 'OK', 201); // 201 Created
-        req.reply.code = 201;
-        return OK(bitacora);
-
-    } catch (error) {
-        data.messageDEV = error.toString();
-        data.messageUSR = "Error al añadir los nuevos precios.";
-        bitacora = AddMSG(bitacora, data, 'FAIL', 500);
-        FAIL(bitacora);
-        return req.error(500, data.messageUSR);
-    }
-}
-
-async function UpdateOnePricesHistory(req) {
-    let bitacora = BITACORA();
-    let data = DATA();
-
-    try {
-        data.api = 'UpdateOnePricesHistory';
-        data.dataReq = req.data;
-        
-        const idPrice = parseInt(req.req.query?.IdPrice);
+      // case 'GetAll':
+      
+      //   break;
     
-        const newData = req.data.price;
+      // case 'AddOne':
+        
+      //   break;
 
-        // Si se intenta cambiar el ID, verificar que el nuevo ID no exista ya
-        if (newData.ID && newData.ID !== idPrice) {
-            const existingPrice = await ztpriceshistory.findOne({ ID: newData.ID }).lean();
-            if (existingPrice) {
-                data.messageUSR = `No se puede actualizar al ID ${newData.ID} porque ya existe.`;
-                bitacora = AddMSG(bitacora, data, 'FAIL', 409); // 409 Conflict
-                FAIL(bitacora);
-                return req.error(409, data.messageUSR);
-            }
-        }
+      case 'AddMany':
+            //FIC: Add One or Many Prices History Method
+            //------------------------------------------------------           
+            bitacora = await AddManyPricesHistoryMethod(bitacora, params, paramString, body)
+            .then((bitacora) => {
+                if (!bitacora.success) {
+                    bitacora.finalRes = true;
+                    throw bitacora;
+                };
+                //let countData = bitacora.countData - 1;
+                //newInventorieItem = bitacora.data[countData].dataRes;
+                return bitacora;
+            });
 
-        const updatedPrice = await ztpriceshistory.findOneAndUpdate(
-            { ID: idPrice },
-            newData,
-            { new: true }
-        ).lean();
+        break;
 
-        if (!updatedPrice) {
-            data.messageUSR = "No se encontró el precio a actualizar.";
-            bitacora = AddMSG(bitacora, data, 'FAIL', 404); // 404 Not Found
-            FAIL(bitacora);
-            return req.error(404, data.messageUSR);
-        } else {
-            data.dataRes = updatedPrice;
-            data.messageUSR = 'Precio actualizado correctamente.';
-            bitacora = AddMSG(bitacora, data, 'OK', 200);
-            req.reply.code = 200;
-            return OK(bitacora);
-        }
+        // case 'UpdateOne':
+        
+        //   break;
 
-    } catch (error) {
-        data.messageDEV = error.toString();
-        data.messageUSR = "Error al actualizar el precio.";
-        bitacora = AddMSG(bitacora, data, 'FAIL', 500);
-        FAIL(bitacora);
-        return req.error(500, data.messageUSR);
+        case 'UpdateMany': //UpdateSome
+            //FIC: Update One or Many Prices History Method
+            //------------------------------------------------------           
+            bitacora = await UpdateManyPricesHistoryMethod(bitacora, params, paramString, body)
+            .then((bitacora) => {
+                if (!bitacora.success) {
+                    bitacora.finalRes = true;
+                    throw bitacora;
+                };
+                //let countData = bitacora.countData - 1;
+                //newInventorieItem = bitacora.data[countData].dataRes;
+                return bitacora;
+            });
+        break;
+
+        // case 'DeleteOne':
+        
+        //   break;
+
+        case 'DeleteMany':
+            //FIC: Delete (logic/physical) One or Many Prices History Method
+            //------------------------------------------------------           
+            bitacora = await DeleteManyPricesHistoryMethod(bitacora, params, paramString, body)
+            .then((bitacora) => {
+                if (!bitacora.success) {
+                    bitacora.finalRes = true;
+                    throw bitacora;
+                };
+                //let countData = bitacora.countData - 1;
+                //newInventorieItem = bitacora.data[countData].dataRes;
+                return bitacora;
+            });
+        break;
+
+
+      default:
+        break;
+    };
+
+    //COMO LOGRARON CUANDO TODO ESTA OK Y ES UN POST RETORNAR NATIVaMENTE
+    //EL ESTATUS DEL RESPONSE DEL METODO 201
+    //FIC: Return response OK
+    return OK(bitacora);
+
+
+  } catch (errorBita) {
+        //FIC: Unhandled error response configuration 
+        if(!errorBita?.finalRes) {
+            data.status = data.status || 500;
+            data.messageDEV = data.messageDEV || errorBita.message;
+            data.messageUSR = data.messageUSR || "<<ERROR CATCH>> La extracción de la información de AZURE <<NO>> tuvo exito";
+            data.dataRes = data.dataRes || errorBita;
+            errorBita = AddMSG(bitacora, data, "FAIL");
+        };
+        console.log(`<<Message USR>> ${errorBita.messageUSR}`);
+        console.log(`<<Message DEV>> ${errorBita.messageDEV}`);
+
+        FAIL(errorBita);
+        //FIC: Manejo de errores adicionales si es necesario
+        req.error({
+            code: 'Internal-Server-Error',
+            status: errorBita.status,
+            message: errorBita.messageUSR,
+            target: errorBita.messageDEV,
+            numericSeverity: 1,
+            //longtext_url: 'https://example.com/error-details',
+            innererror: errorBita
+        });
+    
+        return
+
+    } finally {
+      
     }
-}
 
-async function DeleteOnePricesHistory(req) {
-    let bitacora = BITACORA();
+}
+//********************  LOCAL METHODS ********************** */
+//********************************************************** */
+  
+  async function GetFiltersPricesHistoryMethod(bitacora, options = {}) {  
+    let { body, paramsQuery, paramString } = options;
+    //WithImagesURL = typeof WithImagesURL === 'string' ? WithImagesURL.toLowerCase() === 'true' : false;
     let data = DATA();
-
+    let params = [];
     try {
-        data.api = 'DeleteOnePricesHistory';
-        data.dataReq = req.data;
 
-        const idPrice = parseInt(req.req.query?.IdPrice);
+        bitacora.process = "Extraer Historico de Precios";
+        data.process = `Extraer Historico de Precios de la tabla <<ZTPRICESHISTORY>> de ${bitacora.dbServer}`;
+        data.method = "GET";
+        data.api = "/GetFilters";
+  
+        //FIC: CASO 1 --> SI LA CONEXION YA VA ESTAR HABIALITADA DESDE SERVER CUANDO SE
+        //LEVANTA EL SERVICIO (NPM RUN DEV) ENTONCES SOLO VALIDAR AQUI QUE SI
+        //HAYA UNA CONEXION A MONGODB O A AZURECOSMOS HABILITADA SEGUN
+        //LA BASE DE DATOS QUE ESTEMOS USANDO EN DBSERVER.
+        //FIC: CASO 2 --> POR EL CONTRARIO AQUI ESTABLECER LA CONEXION Y NO OLVIDAR
+        //CERRAR LA CONEXION EN ALGUN FINALLY CUANDO YA NO SE NECESITE.
 
-        const deletionResult = await ztpriceshistory.findOneAndDelete(
-            { ID: idPrice }
-        ).lean();
+        //FIC: Connecting to MongoDB/AzureCosmos database
+        //  const conn = await connectToHanaClient(bitacora.dbServer)
+        // .catch((error) => {
+        //     data.status = error.code;
+        //     data.messageDEV = error.message;
+        //     throw error;
+        // });
 
-        if (!deletionResult) {
-            data.messageUSR = "No se encontró el precio a eliminar.";
-            bitacora = AddMSG(bitacora, data, 'FAIL', 404); // 404 Not Found
-            FAIL(bitacora);
-            return req.error(404, data.messageUSR);
-        } else {
-            data.dataRes = deletionResult;
-            data.messageUSR = 'Precio eliminado correctamente.';
-            bitacora = AddMSG(bitacora, data, 'OK', 200);
-            req.reply.code = 200;
-            return OK(bitacora);
-        }
+        //FIC: Seccion para definir String Query
 
-    } catch (error) {
-        data.messageDEV = error.toString();
-        data.messageUSR = "Error al eliminar el precio.";
-        bitacora = AddMSG(bitacora, data, 'FAIL', 500);
-        FAIL(bitacora);
-        return req.error(500, data.messageUSR);
+
+        //FIC: Logica del Proceso
+
+    const IdPrice = parseInt(paramsQuery?.IdPrice);
+    
+    let pricesHistory;
+
+    switch (bitacora.dbServer) {
+      case 'MongoDB':
+          switch (key) {
+            case 'GetOne':
+                
+                data.process = 'Obtener el historial de precios de un ID.';
+                
+                if (IdPrice < 0) {
+                    
+                    data.status = 500;
+                    data.messageUSR = '<<AVISO>> No se pudo obtener el valor del <<ID>> del precio.';
+                    data.messageDEV = '<<ERROR>> Falta el parametro <<IdPrice>> en el EndPoint.';
+                    throw Error(data.messageDEV);
+                };
+
+          
+                //FIC: OPCION #1 promise propios de los metodos de MongoDB
+                //111111111111111111111111111111111111111111111111111111111
+                pricesHistory = await PricesHistory.findOne(
+                  { ID: IdPrice })
+                  .then((price) => {
+                    if (!price) {
+                      data.status = 404;
+                      data.messageUSR = `<<AVISO>> La extracción de <<ID: ${IdPrice}>> de historial de precios <<NO>> Existe.`;
+                      data.messageDEV = `<<AVISO>> El metodo findOne() no encontro resultados en la tabla <<ZTPRICESHISTORY>> con el <<ID: ${IdPrice}>>`;
+                      throw Error(data.messageDEV);
+                    };
+                  
+                    //FIC: Todo OK
+                    return price;
+                  
+                    })
+                  .catch((error) => {
+                        throw error
+                  });     
+
+              break;
+            case 'GetSome':
+              
+              break;
+
+            case 'GetAll':
+                
+                //FIC: OPCION #1 promise propios de los metodos de MongoDB
+                //11111111111111111111111111111111111111111111111111111111
+                pricesHistory = await PricesHistory.find().lean()
+                  .then((prices) => {
+                    if (!prices) {
+                      data.process = 'Obtener todo el historial de precios.';
+                      data.status = 404;
+                      data.messageUSR = '<<AVISO> No hay historial de precios.';
+                      data.messageDEV = '<<AVISO>> El metodo find() no encontro resultados en la tabla <<ZTPRICESHISTORY>>';
+                      throw Error(data.messageDEV);
+                    };
+
+                    //FIC: Todo OK
+                    return prices;
+                    
+                  })
+                  .catch((error) => {
+                        throw error
+                  });   
+
+              break;
+          
+            default:
+              break;
+          }
+        
+        break;
+
+      case 'AzureCosmos':
+        
+            //PROMESA Y QUERYS PARA OBTENER LA INFORMACION DE AZURE COSMOS
+        
+        break;
+    
+      default:
+        break;
     }
-}
 
-async function crudPricesHistory(req) {
-    const action = req.req.query?.action;
-    switch (action) {
-        case 'getall':
-            return await GetAllPricesHistory(req);
-        case 'addone':
-            return await AddOnePricesHistory(req);
-        case 'updateone':
-            return await UpdateOnePricesHistory(req);
-        case 'deleteone':
-            return await DeleteOnePricesHistory(req);
-        default:
-            let bitacora = BITACORA();
-            let data = DATA();
-            data.messageDEV = `Accion no valida: ${action}`;
-            data.messageUSR = "Acción no reconocida por el sistema.";
-            bitacora = AddMSG(bitacora, data, 'FAIL', 400);
-            FAIL(bitacora);
-            return req.error(400, data.messageUSR);
-    }
-}
+    //FIC: Response settings on success
+    data.messageUSR = "<<OK>> La extracción de los PRODUCTOS <<SI>> tuvo éxito."; // Esta ya era una cadena válida
+    data.dataRes = PriceHistoryPromise;
+    bitacora = AddMSG(bitacora, data, "OK", 200, true);
 
-export default { crudPricesHistory };
+    //FIC: Return response OK
+    return OK(bitacora);
+
+  } catch (error) {
+        //FIC: Unhandled error response configuration
+        data.status = data.status || error?.code ? error.code : 500;
+        data.messageDEV = data.messageDEV || error.message;
+        data.messageUSR = data.messageUSR || "<<ERROR>> La extracción del historico de precios <<NO>> tuvo éxito.";
+        data.dataRes = data.dataRes || error;
+        bitacora = AddMSG(bitacora, data, "FAIL"); // No es necesario devolver el resultado de AddMSG a bitacora aquí
+        console.log(`<<Message USR>> ${data.messageUSR}`);
+        console.log(`<<Message DEV>> ${data.messageDEV}`);
+
+        return FAIL(bitacora);
+
+    } finally {
+        //FIC: Close the connection to HANA after the query
+        //if (conn) {await conn.disconnect(); console.log('<<OK>> Se finalizo la conexion a <<DB>> Hana Client');}
+    };
+  
+};
