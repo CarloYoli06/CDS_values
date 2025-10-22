@@ -130,16 +130,15 @@ export async function crudLabelsValues(req) {
 // --- Helper Function para parsear y validar la operación ---
 // La usaremos en ambas fases para no repetir código
 const parseOperation = (op) => {
-    const { collection, action } = op;
-    let payload;
+    const { collection, action,  payload} = op;
     let model;
     let idField;
 
-    try {
-        payload = JSON.parse(op.payload);
-    } catch (e) {
-        throw new Error(`El payload no es un JSON válido.|INVALID_PAYLOAD|${op.payload}`);
-    }
+    // try {
+    //     payload = JSON.parse(op.payload);
+    // } catch (e) {
+    //     throw new Error(`El payload no es un JSON válido.|INVALID_PAYLOAD|${op.payload}`);
+    // }
 
     if (collection === 'labels') {
         model = Etiqueta;
