@@ -36,42 +36,54 @@ export async function crudLabelsValues(req) {
 
   try {
 
-    switch (ProcessType) {
+    switch (DBServer) {
+      case 'MongoDB':
+        switch (ProcessType) {
 
-      case 'GetAll':
-            //FIC: Get One, Some or All Etiquetas y valores
-            //------------------------------------------------------           
-            bitacora = await getLabelsValues(bitacora, params)
-            .then((bitacora) => {
-                if (!bitacora.success) {
-                    bitacora.finalRes = true;
-                    throw bitacora;
-                };
-                //let countData = bitacora.countData - 1;
-                //newInventorieItem = bitacora.data[countData].dataRes;
-                return bitacora;
-            });
+          case 'GetAll':
+                //FIC: Get One, Some or All Etiquetas y valores
+                //------------------------------------------------------           
+                bitacora = await getLabelsValues(bitacora, params)
+                .then((bitacora) => {
+                    if (!bitacora.success) {
+                        bitacora.finalRes = true;
+                        throw bitacora;
+                    };
+                    //let countData = bitacora.countData - 1;
+                    //newInventorieItem = bitacora.data[countData].dataRes;
+                    return bitacora;
+                });
+            break;
+    
+          case 'CRUD':
+                //FIC: Add, update and delete etiquetas y Method
+                //------------------------------------------------------           
+                bitacora = await executeCrudOperations(bitacora, params, body)
+                .then((bitacora) => {
+                    if (!bitacora.success) {
+                        bitacora.finalRes = true;
+                        throw bitacora;
+                    };
+                    //let countData = bitacora.countData - 1;
+                    //newInventorieItem = bitacora.data[countData].dataRes;
+                    return bitacora;
+                });
+    
+            break;
+    
+          default:
+            break;
+        };
         break;
-
-      case 'CRUD':
-            //FIC: Add, update and delete etiquetas y Method
-            //------------------------------------------------------           
-            bitacora = await executeCrudOperations(bitacora, params, body)
-            .then((bitacora) => {
-                if (!bitacora.success) {
-                    bitacora.finalRes = true;
-                    throw bitacora;
-                };
-                //let countData = bitacora.countData - 1;
-                //newInventorieItem = bitacora.data[countData].dataRes;
-                return bitacora;
-            });
-
+      case 'CosmosDB':
+        console.log('CosmosDB');
         break;
-
       default:
-        break;
-    };
+        const error = new Error(`DBServer must be MongoDB or CosmosDB`);
+        error.status = 400;
+        throw error;
+    }
+
 
     //COMO LOGRARON CUANDO TODO ESTA OK Y ES UN POST RETORNAR NATIVaMENTE
     //EL ESTATUS DEL RESPONSE DEL METODO 201
