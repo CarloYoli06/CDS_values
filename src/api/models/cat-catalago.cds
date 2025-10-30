@@ -32,7 +32,6 @@ type Valor {
     ALIAS: String;
     SECUENCIA: Integer;
     IDVALORSAP: String;
-    DESCRIPTION: String;
     DESCRIPCION: String;
     IMAGEN: String;
     ROUTE: String;

@@ -80,7 +80,7 @@ const EtiquetaSchema = new mongoose.Schema({
     ROUTE: { 
         type: String 
     },
-    DESCRIPTION: { 
+    DESCRIPCION: { 
         type: String 
     },
     // Se anida el objeto de auditoría. No es un array.
