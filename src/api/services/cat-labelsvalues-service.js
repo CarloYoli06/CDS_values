@@ -157,8 +157,17 @@ const parseOperation = (op) => {
 // Recibe la sesión que debe usar (de validación o la real)
 const runOperation = async (opDetails, session) => {
     const { collection, action, payload, model, idField } = opDetails;
-
+    
     if (action === 'CREATE') {
+        // [MODIFICACIÓN 1: Validación de IDVALORPA en CREATE (ver punto 3)]
+        if (collection === 'values' && payload.IDVALORPA) {
+            // Un IDVALORPA es un IDVALOR, por lo que buscamos en el mismo modelo Valor
+            const parentValue = await Valor.findOne({ IDVALOR: payload.IDVALORPA }).session(session);
+            if (!parentValue) {
+                throw new Error(`El IDVALORPA '${payload.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${payload.IDVALOR}`);
+            }
+        }
+
         const newDoc = new model(payload);
         await newDoc.save({ session });
         return {
@@ -170,7 +179,16 @@ const runOperation = async (opDetails, session) => {
     } else if (action === 'UPDATE') {
         const { id, updates } = payload;
 
-        // --- INICIO DE LA VALIDACIÓN ---
+        // [MODIFICACIÓN 2: Prevenir la modificación del ID primario (Punto 2)]
+        // Eliminar el campo clave (IDETIQUETA o IDVALOR) del objeto de actualizaciones.
+        if (idField === 'IDETIQUETA' && updates.IDETIQUETA) {
+            delete updates.IDETIQUETA;
+        } else if (idField === 'IDVALOR' && updates.IDVALOR) {
+            delete updates.IDVALOR;
+        }
+        // [FIN MODIFICACIÓN 2]
+
+        // --- INICIO DE LA VALIDACIÓN existente (para IDVALORPA en UPDATE) ---
         // Validar que IDVALORPA exista si se está actualizando un 'valor'
         if (collection === 'values' && updates.IDVALORPA) {
             
@@ -186,7 +204,18 @@ const runOperation = async (opDetails, session) => {
                 throw new Error(`El IDVALORPA '${updates.IDVALORPA}' no existe en la colección de valores.|NOT_FOUND|${id}`);
             }
         }
-        // --- FIN DE LA VALIDACIÓN ---
+        // --- FIN DE LA VALIDACIÓN existente ---
+        
+        // Comprobar si realmente hay actualizaciones restantes (después de eliminar el ID)
+        if (Object.keys(updates).length === 0) {
+             return {
+                status: 'SUCCESS',
+                operation: 'UPDATE',
+                collection: collection,
+                id: id,
+                message: 'No updatable fields provided or only ID field was provided.'
+            };
+        }
 
         const updatedDoc = await model.findOneAndUpdate({ [idField]: id }, updates, { new: true, session });
         if (!updatedDoc) {
