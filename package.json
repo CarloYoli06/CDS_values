@@ -13,7 +13,7 @@
     "@cap-js/sqlite": "2"
   },
  "scripts": {
-    "build": "./node_modules/.bin/cds build",   
+    "build": "cds build",   
     "dev": "cds watch",     
     "start": "cds-serve"     
   },
