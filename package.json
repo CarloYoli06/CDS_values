@@ -15,9 +15,9 @@
   "scripts": {
     "build": "cds build",   
     "dev": "cds watch",
-    "start": "node node_modules/@sap/cds/bin/cds-serve.js"
+    "start": "node app.js"
   },
-  "main": "server.js",
+  "main": "app.js",
   "engines": {
     "node": ">=20.x",
     "npm": ">=10.x"
