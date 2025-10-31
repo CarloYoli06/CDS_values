@@ -26,8 +26,9 @@ jobs:
       - name: npm install, build, and test
         run: |
           npm install
-          # Se modificó la línea para llamar directamente al binario cds, corrigiendo 'executable not found'
-          ./node_modules/.bin/cds build
+          # Use 'npm run build' to correctly execute the 'cds build' script
+          # as defined in package.json. npm handles the path to the executable.
+          npm run build
           npm run test --if-present
 
       - name: Upload artifact for deployment job
@@ -54,3 +55,4 @@ jobs:
           slot-name: 'Production'
           package: .
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9E417708B0054AC7B5970E50B83B40BE }}
+
