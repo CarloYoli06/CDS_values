@@ -25,11 +25,9 @@ jobs:
 
       - name: npm install, build, and test
         run: |
-          npm install
-          # Use 'npm run build' to correctly execute the 'cds build' script
-          # as defined in package.json. npm handles the path to the executable.
-          npm run build
-          npm run test --if-present
+            npm install
+            npx cds build  # <-- Reemplaza o prueba esto en lugar de 'npm run build'
+            npm run test --if-present
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -55,4 +53,5 @@ jobs:
           slot-name: 'Production'
           package: .
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9E417708B0054AC7B5970E50B83B40BE }}
+
 
