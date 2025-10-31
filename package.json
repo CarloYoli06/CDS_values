@@ -12,10 +12,15 @@
   "devDependencies": {
     "@cap-js/sqlite": "2"
   },
- "scripts": {
+  "scripts": {
     "build": "cds build",   
-    "dev": "cds watch",     
-    "start": "cds-serve"     
+    "dev": "cds watch",
+    "start": "node node_modules/@sap/cds/bin/cds-serve.js"
+  },
+  "main": "server.js",
+  "engines": {
+    "node": ">=20.x",
+    "npm": ">=10.x"
   },
   "files": [
     "src"
