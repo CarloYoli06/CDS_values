@@ -12,10 +12,10 @@
   "devDependencies": {
     "@cap-js/sqlite": "2"
   },
-  "scripts": {
-    "build": "cds build",
-    "dev": "cds watch",
-    "start": "cds-serve"
+ "scripts": {
+    "build": "npx cds build",   
+    "dev": "npx cds watch",     
+    "start": "npx cds-serve"     
   },
   "files": [
     "src"
