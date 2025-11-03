@@ -1,0 +1,32 @@
+# Carpetas y archivos de dependencias
+node_modules
+.npm
+npm-debug.log*
+
+# Artefactos de construcción de SAP CAP/CDS (basado en .gitignore)
+_out
+*.db
+*.sqlite
+target/
+gen/
+@cds-models
+
+# Archivos de la herramienta y sistema operativo
+.DS_Store
+*.orig
+*.log
+.che/
+.gen/
+
+# Archivos de configuración de IDE (no son necesarios en el contenedor)
+.vscode
+.idea
+web.config
+
+# Archivos de entorno local
+# Excluimos todos los .env excepto .env.production, 
+# ya que ese lo copiamos intencionalmente en el Dockerfile.
+.env
+.env.local
+.env.*
+!.env.production
