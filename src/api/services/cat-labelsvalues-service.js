@@ -508,12 +508,15 @@ const validateOperation_Cosmos = async (opDetails) => {
         if (action === 'CREATE') {
             // 1. Validar duplicados: Intentar leer el ID. Si *no* da 404, ya existe.
             try {
-                await container.item(idValue, idValue).read(); // Asumimos idValue como clave de partición
-                // Si llegamos aquí, el `read` tuvo éxito, lo cual es un error (duplicado)
-                throw new Error(`Ya existe un documento con el ID '${idValue}'.|DUPLICATE_KEY|${idValue}`);
+                let data = await container.item(idValue, idValue).read(); // Asumimos idValue como clave de partición
+                console.log(data);
+                if (data.statusCode !== 404) {
+                    throw new Error( `Ya existe un documento con el ID '${idValue}'.|DUPLICATE_KEY|${idValue}`);
+                }
+                
             } catch (error) {
                 if (error.code !== 404) {
-                    throw error; // Lanzar el error si no es "No Encontrado"
+                    throw error; // Lanzar el error si no es " Encontrado"
                 }
                 // Si es 404, está bien, el ID está disponible.
             }
