@@ -14,7 +14,7 @@
     "@cap-js/sqlite": "2"
   },
   "scripts": {
-    "build": "cds build",
+    "build": "npx cds build",
     "dev": "cds watch",
     "start": "cds-serve"
   },
@@ -28,5 +28,8 @@
     }
   },
   "type": "module",
-  "private": true
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0" 
+  }
 }
