@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "A simple CAP project.",
   "dependencies": {
+    "@azure/cosmos": "^4.7.0",
     "@dotenvx/dotenvx": "github:dotenvx/dotenvx",
     "@sap/cds": "9",
     "cors": "2.8.5",
@@ -12,10 +13,10 @@
   "devDependencies": {
     "@cap-js/sqlite": "2"
   },
- "scripts": {
-    "build": "cds build",   
-    "dev": "cds watch",     
-    "start": "cds-serve"     
+  "scripts": {
+    "build": "cds build",
+    "dev": "cds watch",
+    "start": "cds-serve"
   },
   "files": [
     "src"

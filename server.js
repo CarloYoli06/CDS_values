@@ -3,6 +3,7 @@ import cds from "@sap/cds";
 import cors from "cors";
 import mongoose from './src/config/connectToMongoDB.config.js';
 import docEnvX from "./src/config/dotenvXConfig.js";
+import { cosmosDatabase } from "./src/config/conectionToAzureCosmosDB.config.js";
 
 const router = express.Router();
 
