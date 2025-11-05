@@ -14,7 +14,7 @@
     "@cap-js/sqlite": "2"
   },
   "scripts": {
-    "build": "./node_modules/@sap/cds/bin/cds.js build",
+    "build": "cds build",
     "dev": "cds watch",
     "start": "cds-serve"
   },
@@ -28,8 +28,5 @@
     }
   },
   "type": "module",
-  "private": true,
-  "engines": {
-    "node": ">=20.0.0" 
-  }
+  "private": true
 }
