@@ -4,6 +4,7 @@
   "description": "A simple CAP project.",
   "dependencies": {
     "@azure/cosmos": "^4.7.0",
+    "@cap-js/cds-test": "^0.4.0",
     "@dotenvx/dotenvx": "github:dotenvx/dotenvx",
     "@sap/cds": "9",
     "cors": "2.8.5",
@@ -11,12 +12,16 @@
     "mongoose": "8.19.0"
   },
   "devDependencies": {
-    "@cap-js/sqlite": "2"
+    "@cap-js/sqlite": "2",
+    "chai": "^5.1.1",
+    "mocha": "^10.4.0",
+    "supertest": "^7.0.0"
   },
   "scripts": {
     "build": "cds build",
     "dev": "cds watch",
-    "start": "cds-serve"
+    "start": "cds-serve",
+    "test": "mocha --timeout 10000 --exit test/**/*.test.js"
   },
   "files": [
     "src"
