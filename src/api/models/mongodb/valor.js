@@ -72,19 +72,19 @@ const ValorSchema = new mongoose.Schema({
     ALIAS: { 
         type: String 
     },
-    SECUENCIA: { 
-        type: Number 
-    },
     IDVALORSAP: { 
         type: String 
     },
-    DESCRIPCION: { 
-        type: String 
+    SECUENCIA: { 
+        type: Number 
     },
     IMAGEN: { 
         type: String 
     },
     ROUTE: { 
+        type: String 
+    },
+    DESCRIPCION: { 
         type: String 
     },
     // Se anida el objeto de auditoría, reutilizando la misma estructura.
