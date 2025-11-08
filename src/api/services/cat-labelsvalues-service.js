@@ -82,6 +82,32 @@ export async function crudLabelsValues(req) {
                     return bitacora;
                 });
             break;
+          
+          case 'getEtiqueta':
+                //FIC: Get One Etiqueta by ID
+                //------------------------------------------------------
+                bitacora = await getEtiqueta(bitacora, params)
+                .then((bitacora) => {
+                    if (!bitacora.success) {
+                        bitacora.finalRes = true;
+                        throw bitacora;
+                    };
+                    return bitacora;
+                });
+            break;
+
+          case 'getValor':
+                //FIC: Get One Valor by ID
+                //------------------------------------------------------
+                bitacora = await getValor(bitacora, params)
+                .then((bitacora) => {
+                    if (!bitacora.success) {
+                        bitacora.finalRes = true;
+                        throw bitacora;
+                    };
+                    return bitacora;
+                });
+            break;
     
           case 'CRUD':
                 //FIC: Add, update and delete etiquetas y Method
@@ -149,30 +175,23 @@ export async function crudLabelsValues(req) {
 
 
   } catch (errorBita) {
-        //FIC: Unhandled error response configuration 
-        if(!errorBita?.finalRes) {
-            data.status = data.status || 500;
-            data.messageDEV = data.messageDEV || errorBita.message;
-            data.messageUSR = data.messageUSR || `<<ERROR CATCH>> La extracción de la información de ${bitacora.dbServer} <<NO>> tuvo exito`;
-            data.dataRes = data.dataRes || errorBita;
-            errorBita = AddMSG(bitacora, data, "FAIL");
-        };
-        console.log(`<<Message USR>> ${errorBita.messageUSR}`);
-        console.log(`<<Message DEV>> ${errorBita.messageDEV}`);
+        // Si el error ya es una bitácora (lanzado desde FAIL), la usamos.
+        // Si no, es un error no controlado y lo envolvemos en el formato de bitácora.
+        const finalBitacora = errorBita.finalRes ? errorBita : (() => {
+            data.status = errorBita.status || 500;
+            data.messageDEV = errorBita.message || 'Error no controlado';
+            data.messageUSR = `<<ERROR CATCH>> La operación en ${bitacora.dbServer} <<NO>> tuvo éxito.`;
+            data.dataRes = errorBita;
+            return AddMSG(bitacora, data, "FAIL");
+        })();
 
-        FAIL(errorBita);
-        //FIC: Manejo de errores adicionales si es necesario
-        req.error({
-            code: 'Internal-Server-Error',
-            status: errorBita.status,
-            message: errorBita.messageUSR,
-            target: errorBita.messageDEV,
-            numericSeverity: 1,
-            //longtext_url: 'https://example.com/error-details',
-            innererror: errorBita
-        });
-    
-        return
+        // Registramos los mensajes de la bitácora final.
+        console.log(`<<Message USR>> ${finalBitacora.messageUSR}`);
+        console.log(`<<Message DEV>> ${finalBitacora.messageDEV}`);
+
+        // Enviamos la respuesta de fallo y notificamos al framework del error.
+        // El framework espera un objeto con estas propiedades.
+        throw { ...finalBitacora, innererror: finalBitacora };
 
     } finally {
       
@@ -220,6 +239,14 @@ const runOperation = async (opDetails, session) => {
             }
         }
 
+        // Validar que la etiqueta padre (IDETIQUETA) exista al crear un valor.
+        if (collection === 'values' && payload.IDETIQUETA) {
+            const parentLabel = await Etiqueta.findOne({ IDETIQUETA: payload.IDETIQUETA }).session(session);
+            if (!parentLabel) {
+                throw new Error(`La etiqueta padre con IDETIQUETA '${payload.IDETIQUETA}' no existe.|PARENT_LABEL_NOT_FOUND|${payload.IDVALOR}`);
+            }
+        }
+
         const newDoc = new model(payload);
         await newDoc.save({ session });
         return {
@@ -231,13 +258,15 @@ const runOperation = async (opDetails, session) => {
     } else if (action === 'UPDATE') {
         const { id, updates } = payload;
 
-        // [MODIFICACIÓN 2: Prevenir la modificación del ID primario (Punto 2)]
-        if (idField === 'IDETIQUETA' && updates.IDETIQUETA) {
-            delete updates.IDETIQUETA;
-        } else if (idField === 'IDVALOR' && updates.IDVALOR) {
-            delete updates.IDVALOR;
+        // Si se intenta modificar el campo ID ('IDETIQUETA' o 'IDVALOR'), lanzar un error.
+        if ((idField === 'IDETIQUETA' && updates.IDETIQUETA) || (idField === 'IDVALOR' && updates.IDVALOR)) {
+            throw new Error(`La modificación del campo ID ('${idField}') no está permitida.|ID_MODIFICATION_NOT_ALLOWED|${id}`);
         }
-        // [FIN MODIFICACIÓN 2]
+
+        // Prevenir la modificación de la etiqueta padre de un valor.
+        if (collection === 'values' && updates.IDETIQUETA) {
+            throw new Error(`La modificación de la etiqueta padre ('IDETIQUETA') de un valor no está permitida.|PARENT_LABEL_MODIFICATION_NOT_ALLOWED|${id}`);
+        }
 
         // --- INICIO DE LA VALIDACIÓN existente (para IDVALORPA en UPDATE) ---
         if (collection === 'values' && updates.IDVALORPA) {
@@ -316,20 +345,20 @@ const executeCrudOperations = async (bitacora, params, body) => {
         }
 
         // --- FASE 1: VALIDACIÓN (DRY RUN) ---
+        // Se crea UNA sesión de validación para todo el lote de operaciones.
+        const validationSession = await mongoose.startSession();
+        validationSession.startTransaction();
+
         for (const op of operations) {
-            const validationSession = await mongoose.startSession();
-            validationSession.startTransaction();
-            
             let opDetails; // Para el catch
             
             try {
                 // 1. Parsear y validar la operación
                 opDetails = parseOperation(op);
                 
-                // 2. Ejecutarla en la sesión de validación
+                // 2. Ejecutarla DENTRO de la única sesión de validación
                 const successResult = await runOperation(opDetails, validationSession);
                 validationResults.push(successResult);
-
             } catch (error) {
                 // 3. Si falla, registrar el error
                 hasValidationErrors = true;
@@ -361,11 +390,12 @@ const executeCrudOperations = async (bitacora, params, body) => {
                     id: payloadId,
                     error: { code: errorCode, message: errorMsg },
                 });
-            } finally {
-                // 4. SIEMPRE abortar la sesión de validación
-                await validationSession.abortTransaction();
-                validationSession.endSession();
             }
+        }
+        // Al final del bucle, se aborta la transacción de validación completa.
+        if (validationSession.inTransaction()) {
+            await validationSession.abortTransaction();
+            validationSession.endSession();
         } // --- Fin FASE 1 ---
 
         // --- REVISIÓN DE VALIDACIÓN ---
@@ -464,6 +494,91 @@ const getLabelsValues = async (bitacora, params) => {
     }
 };
 
+const getEtiqueta = async (bitacora, params) => {
+    let data = DATA();
+    try {
+        const { IDETIQUETA } = params.paramsQuery;
+
+        if (!IDETIQUETA) {
+            data.status = 400;
+            data.messageUSR = '<<AVISO>> El parámetro IDETIQUETA es requerido.';
+            data.messageDEV = '<<AVISO>> El parámetro IDETIQUETA no fue proporcionado en la consulta.';
+            throw new Error(data.messageDEV);
+        }
+
+        bitacora.process = "Extraer una etiqueta por ID [MongoDB]";
+        data.process = `Extraer una etiqueta por ID de ${bitacora.dbServer}`;
+        data.method = "GET";
+        data.api = "/getEtiqueta";
+
+        const etiqueta = await Etiqueta.findOne({ IDETIQUETA: IDETIQUETA }).lean();
+
+        if (!etiqueta) {
+            data.status = 404;
+            data.messageUSR = `<<AVISO>> No se encontró la etiqueta con ID: ${IDETIQUETA}.`;
+            data.messageDEV = `<<AVISO>> El método findOne() no encontró resultados para la etiqueta con ID: ${IDETIQUETA}.`;
+            throw new Error(data.messageDEV);
+        }
+
+        data.messageUSR = "<<OK>> La extracción de la etiqueta <<SI>> tuvo éxito.";
+        data.dataRes = etiqueta;
+        bitacora = AddMSG(bitacora, data, "OK", 200, true);
+        return OK(bitacora);
+
+    } catch (error) {
+        data.status = data.status || 500;
+        data.messageDEV = data.messageDEV || error.message;
+        data.messageUSR = data.messageUSR || "<<ERROR>> La extracción de la etiqueta <<NO>> tuvo éxito.";
+        data.dataRes = data.dataRes || error;
+        bitacora = AddMSG(bitacora, data, "FAIL");
+        console.log(`<<Message USR>> ${data.messageUSR}`);
+        console.log(`<<Message DEV>> ${data.messageDEV}`);
+        return FAIL(bitacora);
+    }
+};
+
+const getValor = async (bitacora, params) => {
+    let data = DATA();
+    try {
+        const { IDVALOR } = params.paramsQuery;
+
+        if (!IDVALOR) {
+            data.status = 400;
+            data.messageUSR = '<<AVISO>> El parámetro IDVALOR es requerido.';
+            data.messageDEV = '<<AVISO>> El parámetro IDVALOR no fue proporcionado en la consulta.';
+            throw new Error(data.messageDEV);
+        }
+
+        bitacora.process = "Extraer un valor por ID [MongoDB]";
+        data.process = `Extraer un valor por ID de ${bitacora.dbServer}`;
+        data.method = "GET";
+        data.api = "/getValor";
+
+        const valor = await Valor.findOne({ IDVALOR: IDVALOR }).lean();
+
+        if (!valor) {
+            data.status = 404;
+            data.messageUSR = `<<AVISO>> No se encontró el valor con ID: ${IDVALOR}.`;
+            data.messageDEV = `<<AVISO>> El método findOne() no encontró resultados para el valor con ID: ${IDVALOR}.`;
+            throw new Error(data.messageDEV);
+        }
+
+        data.messageUSR = "<<OK>> La extracción del valor <<SI>> tuvo éxito.";
+        data.dataRes = valor;
+        bitacora = AddMSG(bitacora, data, "OK", 200, true);
+        return OK(bitacora);
+
+    } catch (error) {
+        data.status = data.status || 500;
+        data.messageDEV = data.messageDEV || error.message;
+        data.messageUSR = data.messageUSR || "<<ERROR>> La extracción del valor <<NO>> tuvo éxito.";
+        data.dataRes = data.dataRes || error;
+        bitacora = AddMSG(bitacora, data, "FAIL");
+        console.log(`<<Message USR>> ${data.messageUSR}`);
+        console.log(`<<Message DEV>> ${data.messageDEV}`);
+        return FAIL(bitacora);
+    }
+};
 
 //********************************************************** */
 //******************* COSMOS DB METHODS ******************* */

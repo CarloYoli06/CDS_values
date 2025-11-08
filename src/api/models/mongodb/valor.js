@@ -47,11 +47,11 @@ const DetailRowSchema = new mongoose.Schema({
 const ValorSchema = new mongoose.Schema({
     IDSOCIEDAD: { 
         type: Number, 
-        required: true 
+        
     },
     IDCEDI: { 
         type: Number, 
-        required: true 
+         
     },
     IDETIQUETA: { 
         type: String, 
