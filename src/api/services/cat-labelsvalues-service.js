@@ -96,6 +96,20 @@ export async function crudLabelsValues(req) {
                 });
             break;
 
+          case 'getJerarquia':
+                //FIC: Get hierarchy tree by IDETIQUETA
+                //------------------------------------------------------
+                bitacora = await getJerarquiaPorEtiqueta(bitacora, params)
+                .then((bitacora) => {
+                    if (!bitacora.success) {
+                        bitacora.finalRes = true;
+                        throw bitacora;
+                    };
+                    return bitacora;
+                });
+            break;
+
+
           case 'getValor':
                 //FIC: Get One Valor by ID
                 //------------------------------------------------------
@@ -204,6 +218,37 @@ export async function crudLabelsValues(req) {
 //********************************************************** */
 //******************** MONGO DB METHODS ********************* */
 //********************************************************** */
+
+/**
+ * Función auxiliar para construir un árbol anidado a partir de una lista plana.
+ * Esta versión es eficiente (O(n)) usando un Map.
+ */
+const construirArbol = (raiz, descendientes) => {
+    const mapa = new Map();
+    
+    // 1. Crear el nodo raíz anidado y agregarlo al mapa
+    const nodoRaiz = { ...raiz, hijos: [] };
+    mapa.set(nodoRaiz.IDVALOR, nodoRaiz);
+
+    // 2. Mapear todos los descendientes para un acceso rápido
+    for (const item of descendientes) {
+        mapa.set(item.IDVALOR, { ...item, hijos: [] });
+    }
+
+    // 3. Anidar los nodos. Iteramos sobre los descendientes para encontrar su padre en el mapa.
+    for (const item of descendientes) {
+        if (item.IDVALORPA && mapa.has(item.IDVALORPA)) {
+            const padre = mapa.get(item.IDVALORPA);
+            const hijo = mapa.get(item.IDVALOR);
+            if (padre && hijo) { // Doble chequeo de seguridad
+                padre.hijos.push(hijo);
+            }
+        }
+    }
+
+    // Devolvemos solo el nodo raíz, que ahora contiene todo el árbol anidado
+    return nodoRaiz;
+}
 // --- Helper Function para parsear y validar la operación ---
 // La usaremos en ambas fases para no repetir código
 const parseOperation = (op) => {
@@ -529,6 +574,83 @@ const getEtiqueta = async (bitacora, params) => {
         data.status = data.status || 500;
         data.messageDEV = data.messageDEV || error.message;
         data.messageUSR = data.messageUSR || "<<ERROR>> La extracción de la etiqueta <<NO>> tuvo éxito.";
+        data.dataRes = data.dataRes || error;
+        bitacora = AddMSG(bitacora, data, "FAIL");
+        console.log(`<<Message USR>> ${data.messageUSR}`);
+        console.log(`<<Message DEV>> ${data.messageDEV}`);
+        return FAIL(bitacora);
+    }
+};
+
+const getJerarquiaPorEtiqueta = async (bitacora, params) => {
+    let data = DATA();
+    try {
+        const { IDETIQUETA } = params.paramsQuery;
+
+        if (!IDETIQUETA) {
+            data.status = 400;
+            data.messageUSR = '<<AVISO>> El parámetro IDETIQUETA es requerido.';
+            data.messageDEV = '<<AVISO>> El parámetro IDETIQUETA no fue proporcionado en la consulta.';
+            throw new Error(data.messageDEV);
+        }
+
+        bitacora.process = "Extraer jerarquía de valores por etiqueta [MongoDB]";
+        data.process = `Extraer jerarquía de valores por IDETIQUETA de ${bitacora.dbServer}`;
+        data.method = "GET";
+        data.api = "/getJerarquia";
+
+        // 1. Definir el Pipeline de Agregación
+        const pipeline = [
+            {
+                // Paso 1: Encontrar todos los documentos "raíz" que coincidan con la etiqueta.
+                // Un documento raíz es aquel que no tiene un padre (IDVALORPA es null).
+                $match: {
+                    IDETIQUETA: IDETIQUETA,
+                    IDVALORPA: null 
+                }
+            },
+            {
+                // Paso 2: Para CADA raíz encontrada, buscar a TODOS sus descendientes.
+                $graphLookup: {
+                    from: 'Valor',                 // El nombre real de tu colección de valores
+                    startWith: '$IDVALOR',         // Empezar con el IDVALOR del documento raíz
+                    connectFromField: 'IDVALOR',   // El campo del padre (el que se conecta "desde")
+                    connectToField: 'IDVALORPA',   // El campo del hijo (el que se conecta "hacia")
+                    as: 'descendientes',           // Guardar todos los descendientes en un array
+                    depthField: 'profundidad'      // Opcional: añade un campo de profundidad
+                }
+            }
+        ];
+
+        // 2. Ejecutar la agregación
+        const raicesConDescendientes = await Valor.aggregate(pipeline);
+
+        if (!raicesConDescendientes || raicesConDescendientes.length === 0) {
+            data.status = 404;
+            data.messageUSR = `<<AVISO>> No se encontraron elementos raíz con la etiqueta: ${IDETIQUETA}.`;
+            data.messageDEV = `<<AVISO>> La agregación no encontró documentos raíz para la etiqueta: ${IDETIQUETA}.`;
+            throw new Error(data.messageDEV);
+        }
+
+        // 3. Procesar los resultados para anidarlos
+        const arbolesCompletos = raicesConDescendientes.map(raiz => {
+            const descendientes = raiz.descendientes;
+            delete raiz.descendientes; // Limpiar el objeto raíz para no duplicar datos
+            delete raiz.profundidad;   // Limpiar el objeto raíz
+
+            // Usamos la función auxiliar para construir el árbol
+            return construirArbol(raiz, descendientes);
+        });
+
+        data.messageUSR = "<<OK>> La extracción de la jerarquía <<SI>> tuvo éxito.";
+        data.dataRes = arbolesCompletos;
+        bitacora = AddMSG(bitacora, data, "OK", 200, true);
+        return OK(bitacora);
+
+    } catch (error) {
+        data.status = data.status || 500;
+        data.messageDEV = data.messageDEV || error.message;
+        data.messageUSR = data.messageUSR || "<<ERROR>> La extracción de la jerarquía <<NO>> tuvo éxito.";
         data.dataRes = data.dataRes || error;
         bitacora = AddMSG(bitacora, data, "FAIL");
         console.log(`<<Message USR>> ${data.messageUSR}`);

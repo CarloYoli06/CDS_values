@@ -478,5 +478,145 @@ describe('Pruebas automatizadas para la validar el funcionamiento de las apis en
     expect(readLabel.status).to.equal(404);
     expect(readValue.status).to.equal(404);
   });
+
+  it('Debería crear un valor hijo con un IDVALORPA válido', async () => {
+    const labelId = `LABEL_FOR_PARENT_TEST_${Date.now()}`;
+    const parentValueId = `PARENT_VALUE_${Date.now()}`;
+    const childValueId = `CHILD_VALUE_${Date.now()}`;
+
+    // 1. SETUP: Create a label and a parent value
+    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "labels", "action": "CREATE", "payload": { "IDETIQUETA": labelId, "ETIQUETA": "Hierarchy Test Label" } }] }).expect(200);
+    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "values", "action": "CREATE", "payload": { "IDETIQUETA": labelId, "IDVALOR": parentValueId, "VALOR": "Parent Value" } }] }).expect(200);
+
+    // 2. CREATE the child value linking to the parent
+    const createChildResponse = await request
+      .post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser')
+      .send({
+        "operations": [{
+          "collection": "values",
+          "action": "CREATE",
+          "payload": { "IDETIQUETA": labelId, "IDVALOR": childValueId, "VALOR": "Child Value", "IDVALORPA": parentValueId }
+        }]
+      })
+      .expect(200);
+
+    expect(createChildResponse.body.data[0].dataRes[0].status).to.equal('SUCCESS');
+
+    // 3. VERIFY the child was created with the correct parent link
+    const readChild = await request.post(`/api/cat/crudLabelsValues?ProcessType=getValor&DBServer=MongoDB&LoggedUser=TestUser&IDVALOR=${childValueId}`).send({});
+    expect(readChild.status).to.equal(200);
+    expect(readChild.body.data[0].dataRes.IDVALORPA).to.equal(parentValueId);
+
+    // 4. CLEANUP
+    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "values", "action": "DELETE", "payload": { "id": childValueId } }] }).expect(200);
+    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "values", "action": "DELETE", "payload": { "id": parentValueId } }] }).expect(200);
+    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "labels", "action": "DELETE", "payload": { "id": labelId } }] }).expect(200);
+  });
+
+  it('No debería crear un valor hijo si el IDVALORPA no existe', async () => {
+    const labelId = `LABEL_FOR_BAD_PARENT_TEST_${Date.now()}`;
+    const childValueId = `BAD_CHILD_VALUE_${Date.now()}`;
+    const nonExistentParentId = 'I_DO_NOT_EXIST_123';
+
+    // 1. SETUP: Create a label
+    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "labels", "action": "CREATE", "payload": { "IDETIQUETA": labelId, "ETIQUETA": "Bad Hierarchy Test" } }] }).expect(200);
+
+    // 2. ATTEMPT to create the child value with a non-existent parent
+    const createChildResponse = await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "values", "action": "CREATE", "payload": { "IDETIQUETA": labelId, "IDVALOR": childValueId, "VALOR": "Bad Child", "IDVALORPA": nonExistentParentId } }] }).expect(400);
+
+    // 3. VERIFY the error response
+    expect(createChildResponse.body.error.innererror.data[0].dataRes[0].error.code).to.equal('PARENT_NOT_FOUND');
+
+    // 4. CLEANUP
+    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "labels", "action": "DELETE", "payload": { "id": labelId } }] }).expect(200);
+  });
+  
+  it('Debería devolver el árbol jerárquico completo para una etiqueta específica', async () => {
+    // --- 1. SETUP: Crear datos de prueba ---
+    const HIERARCHY_LABEL_ID = `HIERARCHY_LABEL_${Date.now()}`;
+    const OTHER_LABEL_ID_1 = `OTHER_LABEL_1_${Date.now()}`;
+    const GRANDPARENT_ID = `GRANDPARENT_${Date.now()}`;
+    const PARENT_1_ID = `PARENT_1_${Date.now()}`;
+    const PARENT_2_ID = `PARENT_2_${Date.now()}`;
+    const CHILD_1_ID = `CHILD_1_${Date.now()}`;
+    const CHILD_2_ID = `CHILD_2_${Date.now()}`;
+
+    const setupOps = [
+      // Etiquetas
+      { collection: 'labels', action: 'CREATE', payload: { IDETIQUETA: HIERARCHY_LABEL_ID, ETIQUETA: 'Hierarchy Test' } },
+      { collection: 'labels', action: 'CREATE', payload: { IDETIQUETA: OTHER_LABEL_ID_1, ETIQUETA: 'Other 1' } },
+      // Jerarquía
+      { collection: 'values', action: 'CREATE', payload: { IDETIQUETA: HIERARCHY_LABEL_ID, IDVALOR: GRANDPARENT_ID, VALOR: 'Abuelo' } },
+      { collection: 'values', action: 'CREATE', payload: { IDETIQUETA: HIERARCHY_LABEL_ID, IDVALOR: PARENT_1_ID, VALOR: 'Padre 1', IDVALORPA: GRANDPARENT_ID } },
+      { collection: 'values', action: 'CREATE', payload: { IDETIQUETA: HIERARCHY_LABEL_ID, IDVALOR: PARENT_2_ID, VALOR: 'Padre 2', IDVALORPA: GRANDPARENT_ID } },
+      { collection: 'values', action: 'CREATE', payload: { IDETIQUETA: HIERARCHY_LABEL_ID, IDVALOR: CHILD_1_ID, VALOR: 'Hijo 1', IDVALORPA: PARENT_1_ID } },
+      // Valor en otra etiqueta para asegurar que no se mezcle
+      { collection: 'values', action: 'CREATE', payload: { IDETIQUETA: OTHER_LABEL_ID_1, IDVALOR: CHILD_2_ID, VALOR: 'Hijo de otra etiqueta' } },
+    ];
+    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ operations: setupOps }).expect(200);
+
+    // --- 2. EXECUTE: Llamar al endpoint de jerarquía ---
+    const response = await request
+      .post(`/api/cat/crudLabelsValues?ProcessType=getJerarquia&DBServer=MongoDB&LoggedUser=TestUser&IDETIQUETA=${HIERARCHY_LABEL_ID}`)
+      .send({})
+      .expect(200);
+
+    // --- 3. ASSERT: Validar la estructura del árbol ---
+    expect(response.body.success).to.be.true;
+    const arboles = response.body.data[0].dataRes;
+
+    // Debería haber una sola raíz (Abuelo)
+    expect(arboles).to.have.lengthOf(1);
+    const raiz = arboles[0];
+    expect(raiz.IDVALOR).to.equal(GRANDPARENT_ID);
+
+    // El abuelo debe tener 2 hijos (Padre 1 y Padre 2)
+    expect(raiz.hijos).to.have.lengthOf(2);
+    const padre1 = raiz.hijos.find(h => h.IDVALOR === PARENT_1_ID);
+    const padre2 = raiz.hijos.find(h => h.IDVALOR === PARENT_2_ID);
+    expect(padre1).to.not.be.undefined;
+    expect(padre2).to.not.be.undefined;
+
+    // Validar la siguiente generación
+    expect(padre1.hijos).to.have.lengthOf(1);
+    expect(padre1.hijos[0].IDVALOR).to.equal(CHILD_1_ID);
+    expect(padre2.hijos).to.have.lengthOf(0); // Padre 2 no tiene hijos en esta prueba
+
+    // --- 4. CLEANUP: Borrar todos los datos creados ---
+    const cleanupOps = [
+      { collection: 'values', action: 'DELETE', payload: { id: CHILD_1_ID } },
+      { collection: 'values', action: 'DELETE', payload: { id: CHILD_2_ID } },
+      { collection: 'values', action: 'DELETE', payload: { id: PARENT_1_ID } },
+      { collection: 'values', action: 'DELETE', payload: { id: PARENT_2_ID } },
+      { collection: 'values', action: 'DELETE', payload: { id: GRANDPARENT_ID } },
+      { collection: 'labels', action: 'DELETE', payload: { id: HIERARCHY_LABEL_ID } },
+      { collection: 'labels', action: 'DELETE', payload: { id: OTHER_LABEL_ID_1 } },
+    ];
+    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ operations: cleanupOps }).expect(200);
+  });
+
+  it('No debería permitir que un valor sea su propio padre', async () => {
+    // --- 1. SETUP: Crear una etiqueta de prueba ---
+    const labelId = `LABEL_FOR_SELF_PARENT_${Date.now()}`;
+    const selfParentId = `SELF_PARENT_${Date.now()}`;
+    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ operations: [{ collection: 'labels', action: 'CREATE', payload: { IDETIQUETA: labelId, ETIQUETA: 'Self Parent Test' } }] }).expect(200);
+
+    // --- 2. EXECUTE & ASSERT: Intentar crear el valor inválido ---
+    const response = await request
+      .post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser')
+      .send({
+        operations: [{
+          collection: 'values',
+          action: 'CREATE',
+          payload: { IDETIQUETA: labelId, IDVALOR: selfParentId, VALOR: 'Self Parent', IDVALORPA: selfParentId }
+        }]
+      })
+      .expect(400);
+
+    expect(response.body.error.innererror.data[0].dataRes[0].error.code).to.equal('INVALID_OPERATION');
+
+    // --- 3. CLEANUP: Borrar la etiqueta creada ---
+    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ operations: [{ collection: 'labels', action: 'DELETE', payload: { id: labelId } }] }).expect(200);
+  });
   
 });
