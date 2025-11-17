@@ -270,30 +270,46 @@ const parseOperation = (op) => {
 };
 
 // --- Helper Function para ejecutar la acción de DB ---
-// Recibe la sesión que debe usar (de validación o la real)
-// --- Helper Function para ejecutar la acción de DB ---
-// Recibe la sesión que debe usar (de validación o la real)
-const runOperation = async (opDetails, session) => {
+// Recibe la sesión que debe usar (de validación o la real) y un cache de documentos creados
+const runOperation = async (opDetails, session, createdDocsCache = null) => {
     const { collection, action, payload, model, idField } = opDetails;
     
     if (action === 'CREATE') {
         // [MODIFICACIÓN: Validación de IDVALORPA en CREATE]
         if (collection === 'values' && payload.IDVALORPA) {
-        // 1. PRIMERO: Evitar que un valor sea su propio padre
-        if (payload.IDVALOR === payload.IDVALORPA) {
-            throw new Error(`Un valor no puede ser su propio padre (IDVALORPA).|INVALID_OPERATION|${payload.IDVALOR}`);
+            // 1. PRIMERO: Evitar que un valor sea su propio padre
+            if (payload.IDVALOR === payload.IDVALORPA) {
+                throw new Error(`Un valor no puede ser su propio padre (IDVALORPA).|INVALID_OPERATION|${payload.IDVALOR}`);
+            }
+            
+            // 2. SEGUNDO: Verificar que el padre existe (primero en cache, luego en BD)
+            let parentValue = null;
+            
+            // Buscar en el cache de documentos creados en esta transacción
+            if (createdDocsCache && createdDocsCache.has(`values:${payload.IDVALORPA}`)) {
+                parentValue = createdDocsCache.get(`values:${payload.IDVALORPA}`);
+            } else {
+                // Si no está en cache, buscar en la base de datos
+                parentValue = await Valor.findOne({ IDVALOR: payload.IDVALORPA }).session(session);
+            }
+            
+            if (!parentValue) {
+                throw new Error(`El IDVALORPA '${payload.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${payload.IDVALOR}`);
+            }
         }
-        
-        // 2. SEGUNDO: Verificar que el padre existe
-        const parentValue = await Valor.findOne({ IDVALOR: payload.IDVALORPA }).session(session);
-        if (!parentValue) {
-            throw new Error(`El IDVALORPA '${payload.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${payload.IDVALOR}`);
-        }
-    }
 
         // Validar que la etiqueta padre (IDETIQUETA) exista al crear un valor.
         if (collection === 'values' && payload.IDETIQUETA) {
-            const parentLabel = await Etiqueta.findOne({ IDETIQUETA: payload.IDETIQUETA }).session(session);
+            let parentLabel = null;
+            
+            // Buscar en el cache de documentos creados en esta transacción
+            if (createdDocsCache && createdDocsCache.has(`labels:${payload.IDETIQUETA}`)) {
+                parentLabel = createdDocsCache.get(`labels:${payload.IDETIQUETA}`);
+            } else {
+                // Si no está en cache, buscar en la base de datos
+                parentLabel = await Etiqueta.findOne({ IDETIQUETA: payload.IDETIQUETA }).session(session);
+            }
+            
             if (!parentLabel) {
                 throw new Error(`La etiqueta padre con IDETIQUETA '${payload.IDETIQUETA}' no existe.|PARENT_LABEL_NOT_FOUND|${payload.IDVALOR}`);
             }
@@ -301,6 +317,12 @@ const runOperation = async (opDetails, session) => {
 
         const newDoc = new model(payload);
         await newDoc.save({ session });
+        
+        // Guardar en cache si está disponible
+        if (createdDocsCache) {
+            createdDocsCache.set(`${collection}:${newDoc[idField]}`, newDoc);
+        }
+        
         return {
             status: 'SUCCESS',
             operation: 'CREATE',
@@ -401,6 +423,9 @@ const executeCrudOperations = async (bitacora, params, body) => {
         // --- FASE 1: VALIDACIÓN (DRY RUN) ---
         validationSession = await mongoose.startSession();
         validationSession.startTransaction();
+        
+        // Cache para documentos creados en la Fase 1
+        const validationCache = new Map();
 
         for (const op of operations) {
             let opDetails;
@@ -409,8 +434,8 @@ const executeCrudOperations = async (bitacora, params, body) => {
                 // 1. Parsear y validar la operación
                 opDetails = parseOperation(op);
                 
-                // 2. Ejecutarla DENTRO de la sesión de validación
-                const successResult = await runOperation(opDetails, validationSession);
+                // 2. Ejecutarla DENTRO de la sesión de validación CON CACHE
+                const successResult = await runOperation(opDetails, validationSession, validationCache);
                 validationResults.push(successResult);
             } catch (error) {
                 // 3. Si falla, registrar el error
@@ -466,12 +491,15 @@ const executeCrudOperations = async (bitacora, params, body) => {
         // --- FASE 2: EJECUCIÓN REAL (SI NO HAY ERRORES) ---
         mainSession = await mongoose.startSession();
         mainSession.startTransaction();
+        
+        // Cache para documentos creados en la Fase 2
+        const executionCache = new Map();
 
         // Ejecutar las operaciones secuencialmente para mantener el orden
         const finalResults = [];
         for (const op of operations) {
             const opDetails = parseOperation(op);
-            const result = await runOperation(opDetails, mainSession);
+            const result = await runOperation(opDetails, mainSession, executionCache);
             finalResults.push(result);
         }
         
