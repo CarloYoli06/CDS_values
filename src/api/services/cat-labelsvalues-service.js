@@ -157,6 +157,36 @@ export async function crudLabelsValues(req) {
                     return bitacora;
                 });
                 break;
+            case 'getEtiqueta':
+                bitacora = await getEtiqueta_Cosmos(bitacora, params)
+                .then((bitacora) => {
+                    if (!bitacora.success) {
+                        bitacora.finalRes = true;
+                        throw bitacora;
+                    };
+                    return bitacora;
+                });
+                break;
+            case 'getJerarquia':
+                bitacora = await getJerarquiaPorEtiqueta_Cosmos(bitacora, params)
+                .then((bitacora) => {
+                    if (!bitacora.success) {
+                        bitacora.finalRes = true;
+                        throw bitacora;
+                    };
+                    return bitacora;
+                });
+                break;
+            case 'getValor':
+                bitacora = await getValor_Cosmos(bitacora, params)
+                .then((bitacora) => {
+                    if (!bitacora.success) {
+                        bitacora.finalRes = true;
+                        throw bitacora;
+                    };
+                    return bitacora;
+                });
+                break;
             case 'CRUD':
                 //------------------------------------------------------
                 bitacora = await executeCrudOperations_Cosmos(bitacora, params, body)
@@ -763,19 +793,18 @@ const getValor = async (bitacora, params) => {
 //********************************************************** */
 
 // FIC: COSMOS DB - Helper para parsear la operación
-const parseOperation_Cosmos = (op, containers) => {
+const parseOperation_Cosmos = (op) => {
     const { collection, action, payload } = op;
-    const { labelsContainer, valuesContainer } = containers;
-    let container;
+    let containerName; // Solo el nombre, obtendremos el contenedor después
     let idField; // El nombre del campo ID
     let idValue; // El valor del ID para la operación
 
     if (collection === 'labels') {
-        container = labelsContainer;
+        containerName = cosmosLabelsContainerId;
         idField = 'IDETIQUETA';
         idValue = action === 'CREATE' ? payload.IDETIQUETA : payload.id;
     } else if (collection === 'values') {
-        container = valuesContainer;
+        containerName = cosmosValuesContainerId;
         idField = 'IDVALOR';
         idValue = action === 'CREATE' ? payload.IDVALOR : payload.id;
     } else {
@@ -788,83 +817,260 @@ const parseOperation_Cosmos = (op, containers) => {
 
     // Importante: Cosmos DB usa 'id' como el ID de documento único.
     // Asumimos que TUS IDs (IDETIQUETA, IDVALOR) son los 'id' de Cosmos.
-    // Si no es así, esta lógica debe cambiar.
-    return { collection, action, payload, container, idField, idValue, containers };
+    return { collection, action, payload, containerName, idField, idValue };
 };
 
+
+// --- Función Principal (CosmosDB) ---
+const executeCrudOperations_Cosmos = async (bitacora, params, body) => {
+    let data = DATA();
+    const validationResults = [];
+    let hasValidationErrors = false;
+
+    // Mapa para simular el estado de la DB durante la validación
+    const tempDbState = { labels: new Map(), values: new Map() };
+    // Mapa para guardar los documentos leídos para la FASE 2 (optimización)
+    const preReadDocs = new Map(); 
+
+    try {
+        data.api = '/CRUD';
+        bitacora.process = "Crear, Actualizar y Eliminar etiquetas y valores [CosmosDB]";
+        data.process = `Crear, Actualizar y Eliminar <<etiqetas y valores>> de ${bitacora.dbServer}`;
+        data.method = "POST";
+        data.dataReq = body;
+
+        const operations = body.operations;
+        if (!operations || !Array.isArray(operations)) {
+            data.messageDEV = "El body no contiene un array 'operations' válido.";
+            data.messageUSR = "Datos de solicitud no válidos.";
+            data.status = 400;
+            throw new Error(data.messageDEV);
+        }
+
+        const { labelsContainer, valuesContainer } = await getCosmosContainers();
+        const containers = {
+            [cosmosLabelsContainerId]: labelsContainer,
+            [cosmosValuesContainerId]: valuesContainer
+        };
+
+        // Usamos un for...of para asegurar el orden, simulando una transacción
+        for (const op of operations) {
+            let opDetails;
+            try {
+                // Parsear la operación
+                opDetails = parseOperation_Cosmos(op);
+                const { idValue, collection } = opDetails;
+
+                // Validar (hace lecturas de pre-verificación contra el estado real y simulado)
+                const existingDoc = await validateOperation_Cosmos(opDetails, containers, tempDbState);
+                
+                // Simular la operación en el estado temporal si la validación pasa
+                if (op.action === 'CREATE') {
+                    // Guardamos el payload completo, más el 'id' de cosmos
+                    tempDbState[collection].set(idValue, { ...op.payload, id: idValue });
+                } else if (op.action === 'UPDATE') {
+                    // Guardamos el doc original (pre-lectura) para la Fase 2
+                    preReadDocs.set(idValue, existingDoc);
+                    // Aplicamos los cambios al estado simulado
+                    const updatedSimulatedDoc = { ...existingDoc, ...op.payload.updates };
+                    tempDbState[collection].set(idValue, updatedSimulatedDoc);
+                } else if (op.action === 'DELETE') {
+                    // Marcamos como borrado en el estado simulado
+                    tempDbState[collection].set(idValue, { _DELETED_: true });
+                }
+
+                validationResults.push({
+                    status: 'SUCCESS',
+                    operation: op.action,
+                    collection: op.collection,
+                    id: idValue,
+                });
+
+            } catch (error) {
+                // Si falla, registrar el error
+                hasValidationErrors = true;
+                const { collection, action } = op;
+                
+                let errorCode = 'OPERATION_FAILED';
+                let errorMsg = error.message;
+                let payloadId = opDetails?.idValue || opDetails?.payload?.id || 'unknown';
+
+                if (error.message.includes('|')) {
+                    const parts = error.message.split('|');
+                    errorMsg = parts[0];
+                    errorCode = parts[1] || 'OPERATION_FAILED';
+                    payloadId = parts[2] || payloadId;
+                }
+                
+                if (error.code === 409) { // 409 Conflict es el "Duplicate Key" de Cosmos
+                    errorCode = 'DUPLICATE_KEY';
+                    errorMsg = `Ya existe un documento con el ID '${payloadId}'.`;
+                }
+
+                validationResults.push({
+                    status: 'ERROR',
+                    operation: action,
+                    collection: collection,
+                    id: payloadId,
+                    error: { code: errorCode, message: errorMsg },
+                });
+            }
+        }
+        // --- Fin FASE 1 ---
+
+        // --- REVISIÓN DE VALIDACIÓN ---
+        data.dataRes = validationResults;
+        
+        if (hasValidationErrors) {
+            data.messageUSR = 'Una o más operaciones fallaron. No se guardó ningún cambio.';
+            data.messageDEV = 'Validation failed. No commit was attempted.';
+            data.status = 400; // Bad Request
+            bitacora = AddMSG(bitacora, data, 'FAIL');
+            FAIL(bitacora);
+            throw bitacora; // Lanzamos la bitácora
+        }
+
+        // --- FASE 2: EJECUCIÓN REAL (NO ATÓMICA) ---
+        // Si llegamos aquí, todas las validaciones fueron 'SUCCESS'
+        
+        const commitPromises = operations.map(op => {
+            const opDetails = parseOperation_Cosmos(op);
+            // Recuperar el doc pre-leído si es un UPDATE
+            const existingDoc = preReadDocs.get(opDetails.idValue);
+            return runOperation_Cosmos(opDetails, containers, existingDoc);
+        });
+
+        await Promise.all(commitPromises); // Si alguna falla aquí, se va al CATCH
+        
+        data.messageUSR = 'Operaciones CRUD ejecutadas correctamente.';
+        data.status = 200; // 200 OK
+        bitacora = AddMSG(bitacora, data, 'OK', data.status, true);
+        return OK(bitacora);
+
+    } catch (error) {
+        // --- CATCH PRINCIPAL ---
+        
+        // Si el error ya es una bitácora (lanzado desde el FAIL(bitacora)), no lo envolvemos de nuevo.
+        if (error.finalRes) {
+            return FAIL(error);
+        }
+
+        data.status = data.status || 500;
+        data.messageDEV = data.messageDEV || error.message;
+        data.messageUSR = data.messageUSR || "Error inesperado al procesar las operaciones.";
+        data.dataRes = data.dataRes || validationResults;
+        
+        bitacora = AddMSG(bitacora, data, 'FAIL');
+        
+        console.log(`<<Message USR>> ${data.messageUSR}`);
+        console.log(`<<Message DEV>> ${data.messageDEV}`);
+
+        return FAIL(bitacora); 
+    }
+};
+
+
 // FIC: COSMOS DB - Helper para la FASE 1 (Validación)
-const validateOperation_Cosmos = async (opDetails) => {
-    const { collection, action, payload, container, idField, idValue, containers } = opDetails;
-    const { valuesContainer } = containers;
+const validateOperation_Cosmos = async (opDetails, containers, tempDbState) => {
+    const { collection, action, payload, containerName, idField, idValue } = opDetails;
+    const { [cosmosLabelsContainerId]: labelsContainer, [cosmosValuesContainerId]: valuesContainer } = containers;
+    const container = containers[containerName];
+
+    // Función auxiliar para leer un item (de la DB real o del estado simulado)
+    const readItem = async (coll, id) => {
+        if (tempDbState[coll].has(id)) {
+            const simulatedItem = tempDbState[coll].get(id);
+            // Si está marcado como borrado en la simulación, actuar como 404
+            if (simulatedItem._DELETED_) return null; 
+            return simulatedItem;
+        }
+        try {
+            const { resource } = await containers[coll === 'labels' ? cosmosLabelsContainerId : cosmosValuesContainerId].item(id, id).read();
+            return resource;
+        } catch (error) {
+            if (error.code === 404) return null;
+            throw error; // Otro error de lectura
+        }
+    };
 
     try {
         if (action === 'CREATE') {
-            // 1. Validar duplicados: Intentar leer el ID. Si *no* da 404, ya existe.
-            try {
-                let data = await container.item(idValue, idValue).read(); // Asumimos idValue como clave de partición
-                console.log(data);
-                if (data.statusCode !== 404) {
-                    throw new Error( `Ya existe un documento con el ID '${idValue}'.|DUPLICATE_KEY|${idValue}`);
-                }
-                
-            } catch (error) {
-                if (error.code !== 404) {
-                    throw error; // Lanzar el error si no es " Encontrado"
-                }
-                // Si es 404, está bien, el ID está disponible.
+            // Validar duplicados (en estado simulado O en DB real)
+            const existingItem = await readItem(collection, idValue);
+            if (existingItem) {
+                throw new Error( `Ya existe un documento con el ID '${idValue}'.|DUPLICATE_KEY|${idValue}`);
             }
 
-            // 2. Validar IDVALORPA (lógica de Mongoose)
-            if (collection === 'values' && payload.IDVALORPA) {
-                try {
-                    await valuesContainer.item(payload.IDVALORPA, payload.IDVALORPA).read(); // Asumimos ID como partición
-                } catch (error) {
-                    if (error.code === 404) {
-                        throw new Error(`El IDVALORPA '${payload.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${idValue}`);
-                    }
-                    throw error; // Otro error de lectura
-                }
-            }
-        } else if (action === 'UPDATE') {
-            // 1. Validar que el documento exista
-            let existingDoc;
-            try {
-                const { resource } = await container.item(idValue, idValue).read();
-                existingDoc = resource;
-            } catch (error) {
-                if (error.code === 404) {
-                    throw new Error(`Documento con ${idField}=${idValue} no encontrado.|NOT_FOUND|${idValue}`);
-                }
-                throw error;
-            }
-
-            // 2. Validar IDVALORPA (lógica de Mongoose)
-            const { updates } = payload;
-            if (collection === 'values' && updates.IDVALORPA) {
-                if (idValue === updates.IDVALORPA) {
+            if (collection === 'values') {
+                // Validar auto-parentesco
+                if (payload.IDVALORPA && payload.IDVALOR === payload.IDVALORPA) {
                     throw new Error(`Un valor no puede ser su propio padre (IDVALORPA).|INVALID_OPERATION|${idValue}`);
                 }
-                try {
-                    await valuesContainer.item(updates.IDVALORPA, updates.IDVALORPA).read();
-                } catch (error) {
-                    if (error.code === 404) {
-                        throw new Error(`El IDVALORPA '${updates.IDVALORPA}' no existe en la colección de valores.|NOT_FOUND|${idValue}`);
+
+                // Validar etiqueta padre
+                if (payload.IDETIQUETA) {
+                    const parentLabel = await readItem('labels', payload.IDETIQUETA);
+                    if (!parentLabel) {
+                        throw new Error(`La etiqueta padre con IDETIQUETA '${payload.IDETIQUETA}' no existe.|PARENT_LABEL_NOT_FOUND|${idValue}`);
                     }
-                    throw error;
+                }
+
+                // Validar valor padre (IDVALORPA)
+                if (payload.IDVALORPA) {
+                    const parentValue = await readItem('values', payload.IDVALORPA);
+                    if (!parentValue) {
+                        throw new Error(`El IDVALORPA '${payload.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${idValue}`);
+                    }
                 }
             }
-             // Retornar el documento existente para la Fase 2 (optimización)
-            return existingDoc;
+        
+        } else if (action === 'UPDATE') {
+            const { id, updates } = payload;
+            
+            // Validar que el documento exista (en estado simulado O en DB real)
+            const existingDoc = await readItem(collection, idValue);
+            if (!existingDoc) {
+                throw new Error(`Documento con ${idField}=${idValue} no encontrado.|NOT_FOUND|${idValue}`);
+            }
+
+            // Validar modificación de ID
+            if ((idField === 'IDETIQUETA' && updates.IDETIQUETA) || (idField === 'IDVALOR' && updates.IDVALOR)) {
+                throw new Error(`La modificación del campo ID ('${idField}') no está permitida.|ID_MODIFICATION_NOT_ALLOWED|${id}`);
+            }
+
+            if (collection === 'values') {
+                // Validar modificación de etiqueta padre
+                if (updates.IDETIQUETA) {
+                    throw new Error(`La modificación de la etiqueta padre ('IDETIQUETA') de un valor no está permitida.|PARENT_LABEL_MODIFICATION_NOT_ALLOWED|${id}`);
+                }
+                
+                // Si IDVALORPA es explícitamente null, está bien (desconectar)
+                if (Object.prototype.hasOwnProperty.call(updates, 'IDVALORPA') && updates.IDVALORPA !== null) {
+                    // Evitar auto-parentesco
+                    if (idValue === updates.IDVALORPA) {
+                        throw new Error(`Un valor no puede ser su propio padre (IDVALORPA).|INVALID_OPERATION|${idValue}`);
+                    }
+                    // Validar que el nuevo padre exista
+                    const parentValue = await readItem('values', updates.IDVALORPA);
+                    if (!parentValue) {
+                        throw new Error(`El IDVALORPA '${updates.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${idValue}`);
+                    }
+                }
+            }
+            // Retornar el documento real existente
+            // Leemos de la DB real, no del estado simulado, para el 'replace'
+            try {
+                const { resource } = await container.item(idValue, idValue).read();
+                return resource;
+            } catch (error) {
+                 throw new Error(`Documento con ${idField}=${idValue} no encontrado en DB real para update.|NOT_FOUND|${idValue}`);
+            }
 
         } else if (action === 'DELETE') {
-            // 1. Validar que el documento exista
-            try {
-                await container.item(idValue, idValue).read();
-            } catch (error) {
-                if (error.code === 404) {
-                    throw new Error(`Documento con ${idField}=${idValue} no encontrado.|NOT_FOUND|${idValue}`);
-                }
-                throw error;
+            // Validar que el documento exista
+            const existingDoc = await readItem(collection, idValue);
+            if (!existingDoc) {
+                throw new Error(`Documento con ${idField}=${idValue} no encontrado.|NOT_FOUND|${idValue}`);
             }
         } else {
             throw new Error(`La acción '${action}' no es válida.|INVALID_ACTION`);
@@ -875,12 +1081,12 @@ const validateOperation_Cosmos = async (opDetails) => {
     }
 };
 
-// FIC: COSMOS DB - Helper para la FASE 2 (Ejecución)
-const runOperation_Cosmos = async (opDetails, existingDoc) => {
-    const { collection, action, payload, container, idField, idValue } = opDetails;
 
-    // Asignar el 'id' de Cosmos DB. Asumimos que es el mismo que tu ID.
-    // Esto es crucial. Si 'id' es diferente de 'IDETIQUETA', esto falla.
+const runOperation_Cosmos = async (opDetails, containers, existingDoc) => {
+    const { collection, action, payload, containerName, idField, idValue } = opDetails;
+    const container = containers[containerName];
+
+    // Asignar el 'id' de Cosmos DB.
     const itemPayload = { ...payload };
     if (action === 'CREATE') {
         itemPayload.id = idValue;
@@ -896,13 +1102,6 @@ const runOperation_Cosmos = async (opDetails, existingDoc) => {
         };
     } else if (action === 'UPDATE') {
         const { id, updates } = payload;
-
-        // Prevenir la modificación del ID primario (lógica de Mongoose)
-        if (idField === 'IDETIQUETA' && updates.IDETIQUETA) {
-            delete updates.IDETIQUETA;
-        } else if (idField === 'IDVALOR' && updates.IDVALOR) {
-            delete updates.IDVALOR;
-        }
         
         if (Object.keys(updates).length === 0) {
              return {
@@ -910,16 +1109,21 @@ const runOperation_Cosmos = async (opDetails, existingDoc) => {
                 operation: 'UPDATE',
                 collection: collection,
                 id: id,
-                message: 'No updatable fields provided or only ID field was provided.'
+                message: 'No updatable fields provided.'
             };
         }
         
-        // Obtenemos el documento (ya lo leímos en la validación)
-        // const { resource: existingDoc } = await container.item(idValue, idValue).read();
-        // NOTA: Pasamos el 'existingDoc' de la Fase 1 para evitar una re-lectura.
+        if (!existingDoc) {
+             throw new Error(`Error interno: El documento ${id} para UPDATE no fue pre-leído.`);
+        }
 
-        // Combinar los cambios (similar a findOneAndUpdate)
+        // Combinar los cambios
         const updatedDoc = { ...existingDoc, ...updates };
+
+        // Si IDVALORPA es explícitamente null, debemos eliminar el campo
+        if (Object.prototype.hasOwnProperty.call(updates, 'IDVALORPA') && updates.IDVALORPA === null) {
+            delete updatedDoc.IDVALORPA;
+        }
 
         // Reemplazar el documento
         await container.item(idValue, idValue).replace(updatedDoc);
@@ -939,144 +1143,6 @@ const runOperation_Cosmos = async (opDetails, existingDoc) => {
             collection: collection,
             id: id,
         };
-    }
-};
-
-
-// --- Función Principal (CosmosDB) ---
-const executeCrudOperations_Cosmos = async (bitacora, params, body) => {
-    let data = DATA();
-    const validationResults = [];
-    let hasValidationErrors = false;
-    
-    // FIC: COSMOS DB - NOTA IMPORTANTE SOBRE TRANSACCIONES
-    // A diferencia de Mongoose, Cosmos DB NO puede ejecutar una transacción
-    // atómica que abarque múltiples colecciones (contenedores).
-    // Esta implementación REPLICA la estructura de dos fases (Validar, Ejecutar)
-    // pero la FASE 2 (Ejecución) NO ES ATÓMICA. Si una operación en la
-    // Fase 2 falla, las anteriores ya se habrán confirmado.
-
-    try {
-        data.api = '/CRUD';
-        bitacora.process = "Crear, Actualizar y Eliminar etiquetas y valores [CosmosDB]";
-        data.process = `Crear, Actualizar y Eliminar <<etiqetas y valores>> de ${bitacora.dbServer}`;
-        data.method = "POST";
-        data.dataReq = body;
-
-        const operations = body.operations;
-        if (!operations || !Array.isArray(operations)) {
-            data.messageDEV = "El body no contiene un array 'operations' válido.";
-            data.messageUSR = "Datos de solicitud no válidos.";
-            data.status = 400;
-            throw new Error(data.messageDEV);
-        }
-
-        const containers = await getCosmosContainers();
-        const preReadDocs = new Map(); // Para guardar los docs leídos en la Fase 1
-
-        // --- FASE 1: VALIDACIÓN (Simulando el Dry-Run) ---
-        // Hacemos todas las lecturas de validación en paralelo
-        const validationPromises = operations.map(async (op) => {
-            let opDetails;
-            try {
-                // 1. Parsear la operación
-                opDetails = parseOperation_Cosmos(op, containers);
-
-                // 2. Validar (hace lecturas de pre-verificación)
-                const existingDoc = await validateOperation_Cosmos(opDetails);
-                
-                // Si es un UPDATE, guardamos el doc para la Fase 2
-                if (opDetails.action === 'UPDATE' && existingDoc) {
-                    preReadDocs.set(opDetails.idValue, existingDoc);
-                }
-
-                return {
-                    status: 'SUCCESS',
-                    operation: op.action,
-                    collection: op.collection,
-                    id: opDetails.idValue,
-                };
-
-            } catch (error) {
-                // 3. Si falla, registrar el error
-                hasValidationErrors = true;
-                const { collection, action } = op;
-                
-                let errorCode = 'OPERATION_FAILED';
-                let errorMsg = error.message;
-                let payloadId = opDetails?.idValue || 'unknown';
-
-                if (error.message.includes('|')) {
-                    const parts = error.message.split('|');
-                    errorMsg = parts[0];
-                    errorCode = parts[1] || 'OPERATION_FAILED';
-                    payloadId = parts[2] || payloadId;
-                }
-                
-                if (error.code === 409) { // 409 Conflict es el "Duplicate Key" de Cosmos
-                    errorCode = 'DUPLICATE_KEY';
-                    errorMsg = `Ya existe un documento con el ID '${payloadId}'.`;
-                }
-
-                return {
-                    status: 'ERROR',
-                    operation: action,
-                    collection: collection,
-                    id: payloadId,
-                    error: { code: errorCode, message: errorMsg },
-                };
-            }
-        });
-
-        const allValidationResults = await Promise.all(validationPromises);
-        validationResults.push(...allValidationResults);
-        // --- Fin FASE 1 ---
-
-        // --- REVISIÓN DE VALIDACIÓN ---
-        data.dataRes = validationResults;
-        
-        if (hasValidationErrors) {
-            data.messageUSR = 'Una o más operaciones fallaron. No se guardó ningún cambio.';
-            data.messageDEV = 'Validation failed. No commit was attempted.';
-            data.status = 400; // Bad Request
-            bitacora = AddMSG(bitacora, data, 'FAIL');
-            FAIL(bitacora);
-            throw new Error(data.messageDEV);
-        }
-
-        // --- FASE 2: EJECUCIÓN REAL (NO ATÓMICA) ---
-        // Si llegamos aquí, todas las validaciones fueron 'SUCCESS'
-        
-        const commitPromises = operations.map(op => {
-            const opDetails = parseOperation_Cosmos(op, containers);
-            // Recuperar el doc pre-leído si es un UPDATE
-            const existingDoc = preReadDocs.get(opDetails.idValue);
-            return runOperation_Cosmos(opDetails, existingDoc);
-        });
-
-        await Promise.all(commitPromises); // Si alguna falla aquí, se va al CATCH
-        
-        data.messageUSR = 'Operaciones CRUD ejecutadas correctamente.';
-        data.status = 200; // 200 OK
-        bitacora = AddMSG(bitacora, data, 'OK', data.status, true);
-        return OK(bitacora);
-
-    } catch (error) {
-        // --- CATCH PRINCIPAL ---
-        // Captura errores de FASE 0 (ej. 'operations' no es array)
-        // o errores de FASE 2 (ej. un race condition)
-        
-        data.status = data.status || 500;
-        data.messageDEV = data.messageDEV || error.message;
-        data.messageUSR = data.messageUSR || "Error inesperado al procesar las operaciones.";
-        data.dataRes = data.dataRes || validationResults;
-        
-        bitacora = AddMSG(bitacora, data, 'FAIL');
-        
-        console.log(`<<Message USR>> ${data.messageUSR}`);
-        console.log(`<<Message DEV>> ${data.messageDEV}`);
-
-        return FAIL(bitacora); 
     }
 };
 
@@ -1141,6 +1207,179 @@ const getLabelsValues_Cosmos = async (bitacora, params) => {
         console.log(`<<Message USR>> ${data.messageUSR}`);
         console.log(`<<Message DEV>> ${data.messageDEV}`);
     return FAIL(bitacora);
+    }
+};
+
+const getEtiqueta_Cosmos = async (bitacora, params) => {
+    let data = DATA();
+    try {
+        const { IDETIQUETA } = params.paramsQuery;
+
+        if (!IDETIQUETA) {
+            data.status = 400;
+            data.messageUSR = '<<AVISO>> El parámetro IDETIQUETA es requerido.';
+            data.messageDEV = '<<AVISO>> El parámetro IDETIQUETA no fue proporcionado en la consulta.';
+            throw new Error(data.messageDEV);
+        }
+
+        bitacora.process = "Extraer una etiqueta por ID [CosmosDB]";
+        data.process = `Extraer una etiqueta por ID de ${bitacora.dbServer}`;
+        data.method = "GET";
+        data.api = "/getEtiqueta";
+
+        const { labelsContainer } = await getCosmosContainers();
+        
+        try {
+            const { resource: etiqueta } = await labelsContainer.item(IDETIQUETA, IDETIQUETA).read();
+            
+            data.messageUSR = "<<OK>> La extracción de la etiqueta <<SI>> tuvo éxito.";
+            data.dataRes = etiqueta;
+            bitacora = AddMSG(bitacora, data, "OK", 200, true);
+            return OK(bitacora);
+
+        } catch (error) {
+             if (error.code === 404) {
+                data.status = 404;
+                data.messageUSR = `<<AVISO>> No se encontró la etiqueta con ID: ${IDETIQUETA}.`;
+                data.messageDEV = `<<AVISO>> El método item.read() no encontró resultados para la etiqueta con ID: ${IDETIQUETA}.`;
+                throw new Error(data.messageDEV);
+            }
+            throw error; // Otro error de DB
+        }
+
+    } catch (error) {
+        data.status = data.status || 500;
+        data.messageDEV = data.messageDEV || error.message;
+        data.messageUSR = data.messageUSR || "<<ERROR>> La extracción de la etiqueta <<NO>> tuvo éxito.";
+        data.dataRes = data.dataRes || error;
+        bitacora = AddMSG(bitacora, data, "FAIL");
+        console.log(`<<Message USR>> ${data.messageUSR}`);
+        console.log(`<<Message DEV>> ${data.messageDEV}`);
+        return FAIL(bitacora);
+    }
+};
+
+const getJerarquiaPorEtiqueta_Cosmos = async (bitacora, params) => {
+    let data = DATA();
+    try {
+        const { IDETIQUETA } = params.paramsQuery;
+
+        if (!IDETIQUETA) {
+            data.status = 400;
+            data.messageUSR = '<<AVISO>> El parámetro IDETIQUETA es requerido.';
+            data.messageDEV = '<<AVISO>> El parámetro IDETIQUETA no fue proporcionado en la consulta.';
+            throw new Error(data.messageDEV);
+        }
+
+        bitacora.process = "Extraer jerarquía de valores por etiqueta [CosmosDB]";
+        data.process = `Extraer jerarquía de valores por IDETIQUETA de ${bitacora.dbServer}`;
+        data.method = "GET";
+        data.api = "/getJerarquia";
+
+        const { valuesContainer } = await getCosmosContainers();
+        
+        // Consultar todos los valores para esa etiqueta
+        const querySpec = {
+            query: "SELECT * FROM c WHERE c.IDETIQUETA = @idEtiqueta",
+            parameters: [{ name: "@idEtiqueta", value: IDETIQUETA }]
+        };
+        const { resources: allValues } = await valuesContainer.items.query(querySpec).fetchAll();
+
+        if (!allValues || allValues.length === 0) {
+            data.status = 404;
+            data.messageUSR = `<<AVISO>> No se encontraron elementos con la etiqueta: ${IDETIQUETA}.`;
+            data.messageDEV = `<<AVISO>> La consulta no encontró documentos para la etiqueta: ${IDETIQUETA}.`;
+            throw new Error(data.messageDEV);
+        }
+
+        // Construir el árbol en memoria
+        const mapa = new Map();
+        for (const item of allValues) {
+            mapa.set(item.IDVALOR, { ...item, hijos: [] });
+        }
+
+        const arbolesCompletos = [];
+        for (const item of allValues) {
+            const nodo = mapa.get(item.IDVALOR);
+            if (item.IDVALORPA && mapa.has(item.IDVALORPA)) {
+                // Es un hijo, encontrar su padre en el mapa y agregarlo
+                mapa.get(item.IDVALORPA).hijos.push(nodo);
+            } else if (!item.IDVALORPA) {
+                // Es un nodo raíz
+                arbolesCompletos.push(nodo);
+            }
+        }
+        
+        if (arbolesCompletos.length === 0 && allValues.length > 0) {
+             data.status = 404;
+            data.messageUSR = `<<AVISO>> No se encontraron elementos raíz con la etiqueta: ${IDETIQUETA}.`;
+            data.messageDEV = `<<AVISO>> Se encontraron valores, pero ninguno es raíz (IDVALORPA es null).`;
+            throw new Error(data.messageDEV);
+        }
+
+        data.messageUSR = "<<OK>> La extracción de la jerarquía <<SI>> tuvo éxito.";
+        data.dataRes = arbolesCompletos;
+        bitacora = AddMSG(bitacora, data, "OK", 200, true);
+        return OK(bitacora);
+
+    } catch (error) {
+        data.status = data.status || 500;
+        data.messageDEV = data.messageDEV || error.message;
+        data.messageUSR = data.messageUSR || "<<ERROR>> La extracción de la jerarquía <<NO>> tuvo éxito.";
+        data.dataRes = data.dataRes || error;
+        bitacora = AddMSG(bitacora, data, "FAIL");
+        console.log(`<<Message USR>> ${data.messageUSR}`);
+        console.log(`<<Message DEV>> ${data.messageDEV}`);
+        return FAIL(bitacora);
+    }
+};
+
+const getValor_Cosmos = async (bitacora, params) => {
+    let data = DATA();
+    try {
+        const { IDVALOR } = params.paramsQuery;
+
+        if (!IDVALOR) {
+            data.status = 400;
+            data.messageUSR = '<<AVISO>> El parámetro IDVALOR es requerido.';
+            data.messageDEV = '<<AVISO>> El parámetro IDVALOR no fue proporcionado en la consulta.';
+            throw new Error(data.messageDEV);
+        }
+
+        bitacora.process = "Extraer un valor por ID [CosmosDB]";
+        data.process = `Extraer un valor por ID de ${bitacora.dbServer}`;
+        data.method = "GET";
+        data.api = "/getValor";
+
+        const { valuesContainer } = await getCosmosContainers();
+
+        try {
+            const { resource: valor } = await valuesContainer.item(IDVALOR, IDVALOR).read();
+            
+            data.messageUSR = "<<OK>> La extracción del valor <<SI>> tuvo éxito.";
+            data.dataRes = valor;
+            bitacora = AddMSG(bitacora, data, "OK", 200, true);
+            return OK(bitacora);
+
+        } catch (error) {
+            if (error.code === 404) {
+                data.status = 404;
+                data.messageUSR = `<<AVISO>> No se encontró el valor con ID: ${IDVALOR}.`;
+                data.messageDEV = `<<AVISO>> El método item.read() no encontró resultados para el valor con ID: ${IDVALOR}.`;
+                throw new Error(data.messageDEV);
+            }
+            throw error; // Otro error de DB
+        }
+
+    } catch (error) {
+        data.status = data.status || 500;
+        data.messageDEV = data.messageDEV || error.message;
+        data.messageUSR = data.messageUSR || "<<ERROR>> La extracción del valor <<NO>> tuvo éxito.";
+        data.dataRes = data.dataRes || error;
+        bitacora = AddMSG(bitacora, data, "FAIL");
+        console.log(`<<Message USR>> ${data.messageUSR}`);
+        console.log(`<<Message DEV>> ${data.messageDEV}`);
+        return FAIL(bitacora);
     }
 };
 
