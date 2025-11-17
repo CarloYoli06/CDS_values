@@ -271,18 +271,25 @@ const parseOperation = (op) => {
 
 // --- Helper Function para ejecutar la acción de DB ---
 // Recibe la sesión que debe usar (de validación o la real)
+// --- Helper Function para ejecutar la acción de DB ---
+// Recibe la sesión que debe usar (de validación o la real)
 const runOperation = async (opDetails, session) => {
     const { collection, action, payload, model, idField } = opDetails;
     
     if (action === 'CREATE') {
-        // [MODIFICACIÓN 1: Validación de IDVALORPA en CREATE (ver punto 3)]
+        // [MODIFICACIÓN: Validación de IDVALORPA en CREATE]
         if (collection === 'values' && payload.IDVALORPA) {
-            // Un IDVALORPA es un IDVALOR, por lo que buscamos en el mismo modelo Valor
-            const parentValue = await Valor.findOne({ IDVALOR: payload.IDVALORPA }).session(session);
-            if (!parentValue) {
-                throw new Error(`El IDVALORPA '${payload.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${payload.IDVALOR}`);
-            }
+        // 1. PRIMERO: Evitar que un valor sea su propio padre
+        if (payload.IDVALOR === payload.IDVALORPA) {
+            throw new Error(`Un valor no puede ser su propio padre (IDVALORPA).|INVALID_OPERATION|${payload.IDVALOR}`);
         }
+        
+        // 2. SEGUNDO: Verificar que el padre existe
+        const parentValue = await Valor.findOne({ IDVALOR: payload.IDVALORPA }).session(session);
+        if (!parentValue) {
+            throw new Error(`El IDVALORPA '${payload.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${payload.IDVALOR}`);
+        }
+    }
 
         // Validar que la etiqueta padre (IDETIQUETA) exista al crear un valor.
         if (collection === 'values' && payload.IDETIQUETA) {
@@ -313,22 +320,23 @@ const runOperation = async (opDetails, session) => {
             throw new Error(`La modificación de la etiqueta padre ('IDETIQUETA') de un valor no está permitida.|PARENT_LABEL_MODIFICATION_NOT_ALLOWED|${id}`);
         }
 
-        // --- INICIO DE LA VALIDACIÓN existente (para IDVALORPA en UPDATE) ---
+        // --- INICIO DE LA VALIDACIÓN (ORDEN CORREGIDO) ---
         if (collection === 'values' && updates.IDVALORPA) {
             
-            // 1. Evitar que un valor sea su propio padre
+            // 1. PRIMERO: Evitar que un valor sea su propio padre
             if (id === updates.IDVALORPA) {
                 throw new Error(`Un valor no puede ser su propio padre (IDVALORPA).|INVALID_OPERATION|${id}`);
             }
-            // 2. Buscar si el valor padre existe en la base de datos
+            
+            // 2. SEGUNDO: Buscar si el valor padre existe en la base de datos
             const parentValue = await Valor.findOne({ IDVALOR: updates.IDVALORPA }).session(session);
             
             // 3. Si no existe, lanzar un error
             if (!parentValue) {
-                throw new Error(`El IDVALORPA '${updates.IDVALORPA}' no existe en la colección de valores.|NOT_FOUND|${id}`);
+                throw new Error(`El IDVALORPA '${updates.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${id}`);
             }
         }
-        // --- FIN DE LA VALIDACIÓN existente ---
+        // --- FIN DE LA VALIDACIÓN ---
         
         if (Object.keys(updates).length === 0) {
              return {
@@ -367,12 +375,13 @@ const runOperation = async (opDetails, session) => {
     }
 };
 
-// --- Función Principal (MongoDB) ---
+// --- Función Principal (MongoDB) - CORREGIDA ---
 const executeCrudOperations = async (bitacora, params, body) => {
     let data = DATA();
-    const validationResults = []; // Aquí guardaremos los resultados de la FASE 1
+    const validationResults = [];
     let hasValidationErrors = false;
-    let mainSession; // La sesión de la FASE 2
+    let validationSession = null;
+    let mainSession = null;
 
     try {
         data.api = '/CRUD';
@@ -390,18 +399,17 @@ const executeCrudOperations = async (bitacora, params, body) => {
         }
 
         // --- FASE 1: VALIDACIÓN (DRY RUN) ---
-        // Se crea UNA sesión de validación para todo el lote de operaciones.
-        const validationSession = await mongoose.startSession();
+        validationSession = await mongoose.startSession();
         validationSession.startTransaction();
 
         for (const op of operations) {
-            let opDetails; // Para el catch
+            let opDetails;
             
             try {
                 // 1. Parsear y validar la operación
                 opDetails = parseOperation(op);
                 
-                // 2. Ejecutarla DENTRO de la única sesión de validación
+                // 2. Ejecutarla DENTRO de la sesión de validación
                 const successResult = await runOperation(opDetails, validationSession);
                 validationResults.push(successResult);
             } catch (error) {
@@ -437,19 +445,19 @@ const executeCrudOperations = async (bitacora, params, body) => {
                 });
             }
         }
-        // Al final del bucle, se aborta la transacción de validación completa.
-        if (validationSession.inTransaction()) {
-            await validationSession.abortTransaction();
-            validationSession.endSession();
-        } // --- Fin FASE 1 ---
+        
+        // IMPORTANTE: Abortar y cerrar la sesión de validación
+        await validationSession.abortTransaction();
+        validationSession.endSession();
+        validationSession = null; // Limpiar la referencia
 
         // --- REVISIÓN DE VALIDACIÓN ---
-        data.dataRes = validationResults; // Ponemos los resultados en data, sea cual sea el caso
+        data.dataRes = validationResults;
         
         if (hasValidationErrors) {
             data.messageUSR = 'Una o más operaciones fallaron. No se guardó ningún cambio.';
             data.messageDEV = 'Validation failed. No commit was attempted.';
-            data.status = 400; // Bad Request
+            data.status = 400;
             bitacora = AddMSG(bitacora, data, 'FAIL');
             FAIL(bitacora);
             throw new Error(data.messageDEV);
@@ -459,32 +467,52 @@ const executeCrudOperations = async (bitacora, params, body) => {
         mainSession = await mongoose.startSession();
         mainSession.startTransaction();
 
-        const commitPromises = operations.map(op => {
-            const opDetails = parseOperation(op); // Parseamos de nuevo
-            return runOperation(opDetails, mainSession); // Usamos la sesión principal
-        });
-
-        await Promise.all(commitPromises); 
+        // Ejecutar las operaciones secuencialmente para mantener el orden
+        const finalResults = [];
+        for (const op of operations) {
+            const opDetails = parseOperation(op);
+            const result = await runOperation(opDetails, mainSession);
+            finalResults.push(result);
+        }
         
-        await mainSession.commitTransaction(); // ¡Éxito!
+        await mainSession.commitTransaction();
+        mainSession.endSession();
+        mainSession = null;
         
+        data.dataRes = finalResults;
         data.messageUSR = 'Operaciones CRUD ejecutadas correctamente.';
-        data.status = 200; // 200 OK
+        data.status = 200;
         bitacora = AddMSG(bitacora, data, 'OK', data.status, true);
-        await mainSession.endSession();
         return OK(bitacora);
 
     } catch (error) {
-        // --- CATCH PRINCIPAL ---
-        if (mainSession) { // Si el error ocurrió durante la FASE 2
-            await mainSession.abortTransaction();
-            await mainSession.endSession();
+        // --- LIMPIEZA DE SESIONES EN CASO DE ERROR ---
+        if (validationSession) {
+            try {
+                if (validationSession.inTransaction()) {
+                    await validationSession.abortTransaction();
+                }
+                validationSession.endSession();
+            } catch (cleanupError) {
+                console.error('Error al limpiar validationSession:', cleanupError.message);
+            }
+        }
+
+        if (mainSession) {
+            try {
+                if (mainSession.inTransaction()) {
+                    await mainSession.abortTransaction();
+                }
+                mainSession.endSession();
+            } catch (cleanupError) {
+                console.error('Error al limpiar mainSession:', cleanupError.message);
+            }
         }
 
         data.status = data.status || 500;
         data.messageDEV = data.messageDEV || error.message;
         data.messageUSR = data.messageUSR || "Error inesperado al procesar las operaciones.";
-        data.dataRes = data.dataRes || validationResults; // Devolver lo que se haya procesado
+        data.dataRes = data.dataRes || validationResults;
         
         bitacora = AddMSG(bitacora, data, 'FAIL');
         
