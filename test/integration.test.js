@@ -233,7 +233,6 @@ describe('Pruebas automatizadas para la validar el funcionamiento de las apis en
           "payload": {
             "IDSOCIEDAD": 1, "IDCEDI": 1, "IDETIQUETA": newLabelId, "IDVALOR": newValueId, "VALOR": "Test Lifecycle Value",
             "ALIAS": "TLV",
-            "IDVALORSAP": "SAP001",
             "SECUENCIA": 20,
             "IMAGEN": "value_test.jpg",
             "ROUTE": "/test/value",

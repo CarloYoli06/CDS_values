@@ -72,9 +72,6 @@ const ValorSchema = new mongoose.Schema({
     ALIAS: { 
         type: String 
     },
-    IDVALORSAP: { 
-        type: String 
-    },
     SECUENCIA: { 
         type: Number 
     },

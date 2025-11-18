@@ -9,7 +9,6 @@ type VALOR2 {
     VALOR: String;
     ALIAS: String;
     SECUENCIA: Integer;
-    IDVALORSAP: String;
     DESCRIPTION: String;
     DESCRIPCION: String;
     IMAGEN: String;
@@ -31,7 +30,6 @@ type Valor {
     VALOR: String;
     ALIAS: String;
     SECUENCIA: Integer;
-    IDVALORSAP: String;
     DESCRIPCION: String;
     IMAGEN: String;
     ROUTE: String;
