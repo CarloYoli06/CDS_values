@@ -19,14 +19,23 @@ let valuesContainer;
 
 // FIC: COSMOS DB - Función helper (usando la Solución 2)
 async function getCosmosContainers() {
-    
+
     if (!labelsContainer || !valuesContainer) {
         // Ahora esto funciona perfectamente, porque 'cosmosDatabase'
         // es el objeto de base de datos que sí tiene el método .container()
         labelsContainer = cosmosDatabase.container(cosmosLabelsContainerId);
         valuesContainer = cosmosDatabase.container(cosmosValuesContainerId);
+
+        try {
+            const lDef = await labelsContainer.read();
+            console.log("DEBUG: LABELS PK:", JSON.stringify(lDef.resource.partitionKey));
+            const vDef = await valuesContainer.read();
+            console.log("DEBUG: VALUES PK:", JSON.stringify(vDef.resource.partitionKey));
+        } catch (e) {
+            console.log("DEBUG: Error reading container def", e.message);
+        }
     }
-    
+
     return { labelsContainer, valuesContainer };
 }
 
@@ -36,189 +45,189 @@ async function getCosmosContainers() {
 
 /* EndPoint: localhost:8080/api/inv/crud?ProcessType='GETALL'&LoggedUser=FIBARRAC&DBServer=MongoDB/AzureCosmos  */
 export async function crudLabelsValues(req) {
-  
-  let bitacora = BITACORA();
-  let data = DATA();
-  
-  //let ProcessType = req.req.query?.ProcessType;
-  let {ProcessType} = req.req.query;
-  const {LoggedUser} = req.req.query;
-  const {DBServer} = req.req.query;
 
-  //FIC: get query params
-  //let params = req.req.query;
-  const body = req.req.body;
-   const params = {
+    let bitacora = BITACORA();
+    let data = DATA();
+
+    //let ProcessType = req.req.query?.ProcessType;
+    let { ProcessType } = req.req.query;
+    const { LoggedUser } = req.req.query;
+    const { DBServer } = req.req.query;
+
+    //FIC: get query params
+    //let params = req.req.query;
+    const body = req.req.body;
+    const params = {
         //WithImagesURL : req.req.query?.WithImagesURL
-        paramsQuery : req.req.query,
-        paramString : req.req.query ? new URLSearchParams(req.req.query).toString().trim() : '',
-        body : body
+        paramsQuery: req.req.query,
+        paramString: req.req.query ? new URLSearchParams(req.req.query).toString().trim() : '',
+        body: body
     };
-  //FIC: get params of the service and convert in string
-  //let paramString = req.req.query ? new URLSearchParams(req.req.query).toString().trim() : '';
-  //FIC: get body 
-  //const body = req.req.body;
+    //FIC: get params of the service and convert in string
+    //let paramString = req.req.query ? new URLSearchParams(req.req.query).toString().trim() : '';
+    //FIC: get body 
+    //const body = req.req.body;
 
-  //FIC: start fill some properties of the bitacora
-  bitacora.loggedUser = LoggedUser;
-  bitacora.processType = ProcessType;
-  bitacora.dbServer = DBServer;
+    //FIC: start fill some properties of the bitacora
+    bitacora.loggedUser = LoggedUser;
+    bitacora.processType = ProcessType;
+    bitacora.dbServer = DBServer;
 
-  try {
+    try {
 
-    switch (DBServer) {
-      case 'MongoDB':
-        switch (ProcessType) {
+        switch (DBServer) {
+            case 'MongoDB':
+                switch (ProcessType) {
 
-          case 'GetAll':
-                //FIC: Get One, Some or All Etiquetas y valores
-                //------------------------------------------------------           
-                bitacora = await getLabelsValues(bitacora, params)
-                .then((bitacora) => {
-                    if (!bitacora.success) {
-                        bitacora.finalRes = true;
-                        throw bitacora;
-                    };
-                    return bitacora;
-                });
-            break;
-          
-          case 'getEtiqueta':
-                //FIC: Get One Etiqueta by ID
-                //------------------------------------------------------
-                bitacora = await getEtiqueta(bitacora, params)
-                .then((bitacora) => {
-                    if (!bitacora.success) {
-                        bitacora.finalRes = true;
-                        throw bitacora;
-                    };
-                    return bitacora;
-                });
-            break;
+                    case 'GetAll':
+                        //FIC: Get One, Some or All Etiquetas y valores
+                        //------------------------------------------------------           
+                        bitacora = await getLabelsValues(bitacora, params)
+                            .then((bitacora) => {
+                                if (!bitacora.success) {
+                                    bitacora.finalRes = true;
+                                    throw bitacora;
+                                };
+                                return bitacora;
+                            });
+                        break;
 
-          case 'getJerarquia':
-                //FIC: Get hierarchy tree by IDETIQUETA
-                //------------------------------------------------------
-                bitacora = await getJerarquiaPorEtiqueta(bitacora, params)
-                .then((bitacora) => {
-                    if (!bitacora.success) {
-                        bitacora.finalRes = true;
-                        throw bitacora;
-                    };
-                    return bitacora;
-                });
-            break;
+                    case 'getEtiqueta':
+                        //FIC: Get One Etiqueta by ID
+                        //------------------------------------------------------
+                        bitacora = await getEtiqueta(bitacora, params)
+                            .then((bitacora) => {
+                                if (!bitacora.success) {
+                                    bitacora.finalRes = true;
+                                    throw bitacora;
+                                };
+                                return bitacora;
+                            });
+                        break;
+
+                    case 'getJerarquia':
+                        //FIC: Get hierarchy tree by IDETIQUETA
+                        //------------------------------------------------------
+                        bitacora = await getJerarquiaPorEtiqueta(bitacora, params)
+                            .then((bitacora) => {
+                                if (!bitacora.success) {
+                                    bitacora.finalRes = true;
+                                    throw bitacora;
+                                };
+                                return bitacora;
+                            });
+                        break;
 
 
-          case 'getValor':
-                //FIC: Get One Valor by ID
-                //------------------------------------------------------
-                bitacora = await getValor(bitacora, params)
-                .then((bitacora) => {
-                    if (!bitacora.success) {
-                        bitacora.finalRes = true;
-                        throw bitacora;
-                    };
-                    return bitacora;
-                });
-            break;
-    
-          case 'CRUD':
-                //FIC: Add, update and delete etiquetas y Method
-                //------------------------------------------------------           
-                bitacora = await executeCrudOperations(bitacora, params, body)
-                .then((bitacora) => {
-                    if (!bitacora.success) {
-                        bitacora.finalRes = true;
-                        throw bitacora;
-                    };
-                    return bitacora;
-                });
-    
-            break;
-    
-          default:
-            const mongoError = new Error(`ProcessType '${ProcessType}' no válido para MongoDB`);
-            mongoError.status = 400;
-            throw mongoError;
-        };
-        break;
-      case 'CosmosDB':
-        // FIC: COSMOS DB - Inicio de la lógica de Cosmos
-        switch (ProcessType) {
-            case 'GetAll':
-                //------------------------------------------------------
-                bitacora = await getLabelsValues_Cosmos(bitacora, params)
-                .then((bitacora) => {
-                    if (!bitacora.success) {
-                        bitacora.finalRes = true;
-                        throw bitacora;
-                    };
-                    return bitacora;
-                });
+                    case 'getValor':
+                        //FIC: Get One Valor by ID
+                        //------------------------------------------------------
+                        bitacora = await getValor(bitacora, params)
+                            .then((bitacora) => {
+                                if (!bitacora.success) {
+                                    bitacora.finalRes = true;
+                                    throw bitacora;
+                                };
+                                return bitacora;
+                            });
+                        break;
+
+                    case 'CRUD':
+                        //FIC: Add, update and delete etiquetas y Method
+                        //------------------------------------------------------           
+                        bitacora = await executeCrudOperations(bitacora, params, body)
+                            .then((bitacora) => {
+                                if (!bitacora.success) {
+                                    bitacora.finalRes = true;
+                                    throw bitacora;
+                                };
+                                return bitacora;
+                            });
+
+                        break;
+
+                    default:
+                        const mongoError = new Error(`ProcessType '${ProcessType}' no válido para MongoDB`);
+                        mongoError.status = 400;
+                        throw mongoError;
+                };
                 break;
-            case 'getEtiqueta':
-                bitacora = await getEtiqueta_Cosmos(bitacora, params)
-                .then((bitacora) => {
-                    if (!bitacora.success) {
-                        bitacora.finalRes = true;
-                        throw bitacora;
-                    };
-                    return bitacora;
-                });
-                break;
-            case 'getJerarquia':
-                bitacora = await getJerarquiaPorEtiqueta_Cosmos(bitacora, params)
-                .then((bitacora) => {
-                    if (!bitacora.success) {
-                        bitacora.finalRes = true;
-                        throw bitacora;
-                    };
-                    return bitacora;
-                });
-                break;
-            case 'getValor':
-                bitacora = await getValor_Cosmos(bitacora, params)
-                .then((bitacora) => {
-                    if (!bitacora.success) {
-                        bitacora.finalRes = true;
-                        throw bitacora;
-                    };
-                    return bitacora;
-                });
-                break;
-            case 'CRUD':
-                //------------------------------------------------------
-                bitacora = await executeCrudOperations_Cosmos(bitacora, params, body)
-                .then((bitacora) => {
-                    if (!bitacora.success) {
-                        bitacora.finalRes = true;
-                        throw bitacora;
-                    };
-                    return bitacora;
-                });
+            case 'CosmosDB':
+                // FIC: COSMOS DB - Inicio de la lógica de Cosmos
+                switch (ProcessType) {
+                    case 'GetAll':
+                        //------------------------------------------------------
+                        bitacora = await getLabelsValues_Cosmos(bitacora, params)
+                            .then((bitacora) => {
+                                if (!bitacora.success) {
+                                    bitacora.finalRes = true;
+                                    throw bitacora;
+                                };
+                                return bitacora;
+                            });
+                        break;
+                    case 'getEtiqueta':
+                        bitacora = await getEtiqueta_Cosmos(bitacora, params)
+                            .then((bitacora) => {
+                                if (!bitacora.success) {
+                                    bitacora.finalRes = true;
+                                    throw bitacora;
+                                };
+                                return bitacora;
+                            });
+                        break;
+                    case 'getJerarquia':
+                        bitacora = await getJerarquiaPorEtiqueta_Cosmos(bitacora, params)
+                            .then((bitacora) => {
+                                if (!bitacora.success) {
+                                    bitacora.finalRes = true;
+                                    throw bitacora;
+                                };
+                                return bitacora;
+                            });
+                        break;
+                    case 'getValor':
+                        bitacora = await getValor_Cosmos(bitacora, params)
+                            .then((bitacora) => {
+                                if (!bitacora.success) {
+                                    bitacora.finalRes = true;
+                                    throw bitacora;
+                                };
+                                return bitacora;
+                            });
+                        break;
+                    case 'CRUD':
+                        //------------------------------------------------------
+                        bitacora = await executeCrudOperations_Cosmos(bitacora, params, body)
+                            .then((bitacora) => {
+                                if (!bitacora.success) {
+                                    bitacora.finalRes = true;
+                                    throw bitacora;
+                                };
+                                return bitacora;
+                            });
+                        break;
+                    default:
+                        const cosmosError = new Error(`ProcessType '${ProcessType}' no válido para CosmosDB`);
+                        cosmosError.status = 400;
+                        throw cosmosError;
+                }
+                // FIC: COSMOS DB - Fin de la lógica de Cosmos
                 break;
             default:
-                const cosmosError = new Error(`ProcessType '${ProcessType}' no válido para CosmosDB`);
-                cosmosError.status = 400;
-                throw cosmosError;
+                const error = new Error(`DBServer must be MongoDB or CosmosDB`);
+                error.status = 400;
+                throw error;
         }
-        // FIC: COSMOS DB - Fin de la lógica de Cosmos
-        break;
-      default:
-        const error = new Error(`DBServer must be MongoDB or CosmosDB`);
-        error.status = 400;
-        throw error;
-    }
 
 
-    //COMO LOGRARON CUANDO TODO ESTA OK Y ES UN POST RETORNAR NATIVaMENTE
-    //EL ESTATUS DEL RESPONSE DEL METODO 201
-    //FIC: Return response OK
-    return OK(bitacora);
+        //COMO LOGRARON CUANDO TODO ESTA OK Y ES UN POST RETORNAR NATIVaMENTE
+        //EL ESTATUS DEL RESPONSE DEL METODO 201
+        //FIC: Return response OK
+        return OK(bitacora);
 
 
-  } catch (errorBita) {
+    } catch (errorBita) {
         // Si el error ya es una bitácora (lanzado desde FAIL), la usamos.
         // Si no, es un error no controlado y lo envolvemos en el formato de bitácora.
         const finalBitacora = errorBita.finalRes ? errorBita : (() => {
@@ -238,7 +247,7 @@ export async function crudLabelsValues(req) {
         throw { ...finalBitacora, innererror: finalBitacora };
 
     } finally {
-      
+
     }
 
 }
@@ -255,7 +264,7 @@ export async function crudLabelsValues(req) {
  */
 const construirArbol = (raiz, descendientes) => {
     const mapa = new Map();
-    
+
     // 1. Crear el nodo raíz anidado y agregarlo al mapa
     const nodoRaiz = { ...raiz, hijos: [] };
     mapa.set(nodoRaiz.IDVALOR, nodoRaiz);
@@ -282,7 +291,7 @@ const construirArbol = (raiz, descendientes) => {
 // --- Helper Function para parsear y validar la operación ---
 // La usaremos en ambas fases para no repetir código
 const parseOperation = (op) => {
-    const { collection, action,  payload} = op;
+    const { collection, action, payload } = op;
     let model;
     let idField;
 
@@ -303,7 +312,7 @@ const parseOperation = (op) => {
 // Recibe la sesión que debe usar (de validación o la real) y un cache de documentos creados
 const runOperation = async (opDetails, session, createdDocsCache = null) => {
     const { collection, action, payload, model, idField } = opDetails;
-    
+
     if (action === 'CREATE') {
         // [MODIFICACIÓN: Validación de IDVALORPA en CREATE]
         if (collection === 'values' && payload.IDVALORPA) {
@@ -311,10 +320,10 @@ const runOperation = async (opDetails, session, createdDocsCache = null) => {
             if (payload.IDVALOR === payload.IDVALORPA) {
                 throw new Error(`Un valor no puede ser su propio padre (IDVALORPA).|INVALID_OPERATION|${payload.IDVALOR}`);
             }
-            
+
             // 2. SEGUNDO: Verificar que el padre existe (primero en cache, luego en BD)
             let parentValue = null;
-            
+
             // Buscar en el cache de documentos creados en esta transacción
             if (createdDocsCache && createdDocsCache.has(`values:${payload.IDVALORPA}`)) {
                 parentValue = createdDocsCache.get(`values:${payload.IDVALORPA}`);
@@ -322,7 +331,7 @@ const runOperation = async (opDetails, session, createdDocsCache = null) => {
                 // Si no está en cache, buscar en la base de datos
                 parentValue = await Valor.findOne({ IDVALOR: payload.IDVALORPA }).session(session);
             }
-            
+
             if (!parentValue) {
                 throw new Error(`El IDVALORPA '${payload.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${payload.IDVALOR}`);
             }
@@ -331,7 +340,7 @@ const runOperation = async (opDetails, session, createdDocsCache = null) => {
         // Validar que la etiqueta padre (IDETIQUETA) exista al crear un valor.
         if (collection === 'values' && payload.IDETIQUETA) {
             let parentLabel = null;
-            
+
             // Buscar en el cache de documentos creados en esta transacción
             if (createdDocsCache && createdDocsCache.has(`labels:${payload.IDETIQUETA}`)) {
                 parentLabel = createdDocsCache.get(`labels:${payload.IDETIQUETA}`);
@@ -339,7 +348,7 @@ const runOperation = async (opDetails, session, createdDocsCache = null) => {
                 // Si no está en cache, buscar en la base de datos
                 parentLabel = await Etiqueta.findOne({ IDETIQUETA: payload.IDETIQUETA }).session(session);
             }
-            
+
             if (!parentLabel) {
                 throw new Error(`La etiqueta padre con IDETIQUETA '${payload.IDETIQUETA}' no existe.|PARENT_LABEL_NOT_FOUND|${payload.IDVALOR}`);
             }
@@ -347,12 +356,12 @@ const runOperation = async (opDetails, session, createdDocsCache = null) => {
 
         const newDoc = new model(payload);
         await newDoc.save({ session });
-        
+
         // Guardar en cache si está disponible
         if (createdDocsCache) {
             createdDocsCache.set(`${collection}:${newDoc[idField]}`, newDoc);
         }
-        
+
         return {
             status: 'SUCCESS',
             operation: 'CREATE',
@@ -374,24 +383,24 @@ const runOperation = async (opDetails, session, createdDocsCache = null) => {
 
         // --- INICIO DE LA VALIDACIÓN (ORDEN CORREGIDO) ---
         if (collection === 'values' && updates.IDVALORPA) {
-            
+
             // 1. PRIMERO: Evitar que un valor sea su propio padre
             if (id === updates.IDVALORPA) {
                 throw new Error(`Un valor no puede ser su propio padre (IDVALORPA).|INVALID_OPERATION|${id}`);
             }
-            
+
             // 2. SEGUNDO: Buscar si el valor padre existe en la base de datos
             const parentValue = await Valor.findOne({ IDVALOR: updates.IDVALORPA }).session(session);
-            
+
             // 3. Si no existe, lanzar un error
             if (!parentValue) {
                 throw new Error(`El IDVALORPA '${updates.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${id}`);
             }
         }
         // --- FIN DE LA VALIDACIÓN ---
-        
+
         if (Object.keys(updates).length === 0) {
-             return {
+            return {
                 status: 'SUCCESS',
                 operation: 'UPDATE',
                 collection: collection,
@@ -453,17 +462,17 @@ const executeCrudOperations = async (bitacora, params, body) => {
         // --- FASE 1: VALIDACIÓN (DRY RUN) ---
         validationSession = await mongoose.startSession();
         validationSession.startTransaction();
-        
+
         // Cache para documentos creados en la Fase 1
         const validationCache = new Map();
 
         for (const op of operations) {
             let opDetails;
-            
+
             try {
                 // 1. Parsear y validar la operación
                 opDetails = parseOperation(op);
-                
+
                 // 2. Ejecutarla DENTRO de la sesión de validación CON CACHE
                 const successResult = await runOperation(opDetails, validationSession, validationCache);
                 validationResults.push(successResult);
@@ -471,7 +480,7 @@ const executeCrudOperations = async (bitacora, params, body) => {
                 // 3. Si falla, registrar el error
                 hasValidationErrors = true;
                 const { collection, action } = op;
-                
+
                 let errorCode = 'OPERATION_FAILED';
                 let errorMsg = error.message;
                 let payloadId = opDetails?.payload?.id || opDetails?.payload?.IDETIQUETA || opDetails?.payload?.IDVALOR || 'unknown';
@@ -490,7 +499,7 @@ const executeCrudOperations = async (bitacora, params, body) => {
                     errorMsg = `Ya existe un documento con el ID '${dupValue}'.`;
                     payloadId = dupValue;
                 }
-                
+
                 validationResults.push({
                     status: 'ERROR',
                     operation: action,
@@ -500,7 +509,7 @@ const executeCrudOperations = async (bitacora, params, body) => {
                 });
             }
         }
-        
+
         // IMPORTANTE: Abortar y cerrar la sesión de validación
         await validationSession.abortTransaction();
         validationSession.endSession();
@@ -508,7 +517,7 @@ const executeCrudOperations = async (bitacora, params, body) => {
 
         // --- REVISIÓN DE VALIDACIÓN ---
         data.dataRes = validationResults;
-        
+
         if (hasValidationErrors) {
             data.messageUSR = 'Una o más operaciones fallaron. No se guardó ningún cambio.';
             data.messageDEV = 'Validation failed. No commit was attempted.';
@@ -521,7 +530,7 @@ const executeCrudOperations = async (bitacora, params, body) => {
         // --- FASE 2: EJECUCIÓN REAL (SI NO HAY ERRORES) ---
         mainSession = await mongoose.startSession();
         mainSession.startTransaction();
-        
+
         // Cache para documentos creados en la Fase 2
         const executionCache = new Map();
 
@@ -532,11 +541,11 @@ const executeCrudOperations = async (bitacora, params, body) => {
             const result = await runOperation(opDetails, mainSession, executionCache);
             finalResults.push(result);
         }
-        
+
         await mainSession.commitTransaction();
         mainSession.endSession();
         mainSession = null;
-        
+
         data.dataRes = finalResults;
         data.messageUSR = 'Operaciones CRUD ejecutadas correctamente.';
         data.status = 200;
@@ -571,13 +580,13 @@ const executeCrudOperations = async (bitacora, params, body) => {
         data.messageDEV = data.messageDEV || error.message;
         data.messageUSR = data.messageUSR || "Error inesperado al procesar las operaciones.";
         data.dataRes = data.dataRes || validationResults;
-        
+
         bitacora = AddMSG(bitacora, data, 'FAIL');
-        
+
         console.log(`<<Message USR>> ${data.messageUSR}`);
         console.log(`<<Message DEV>> ${data.messageDEV}`);
 
-        return FAIL(bitacora); 
+        return FAIL(bitacora);
     }
 };
 
@@ -598,15 +607,15 @@ const getLabelsValues = async (bitacora, params) => {
                 }
             }
         ]).then((etiqueta) => {
-                    if (!etiqueta) {
-                      data.process = 'Obtener todo el historial de etiquwta valor.';
-                      data.status = 404;
-                      data.messageUSR = '<<AVISO> No hay datos de etiquetas y valores.';
-                      data.messageDEV = '<<AVISO>> El metodo aggregate() no  relaciono elementos de la coleccion <<Etiquetas>> y <<Valores>>';
-                      throw Error(data.messageDEV);
-                    };
-                    return etiqueta;
-                  })
+            if (!etiqueta) {
+                data.process = 'Obtener todo el historial de etiquwta valor.';
+                data.status = 404;
+                data.messageUSR = '<<AVISO> No hay datos de etiquetas y valores.';
+                data.messageDEV = '<<AVISO>> El metodo aggregate() no  relaciono elementos de la coleccion <<Etiquetas>> y <<Valores>>';
+                throw Error(data.messageDEV);
+            };
+            return etiqueta;
+        })
         //FIC: Response settings on success
         data.messageUSR = "<<OK>> La extracción de los ETIQUETAS Y VALORES <<SI>> tuvo éxito.";
         data.dataRes = labelsWithValues;
@@ -621,7 +630,7 @@ const getLabelsValues = async (bitacora, params) => {
         bitacora = AddMSG(bitacora, data, "FAIL");
         console.log(`<<Message USR>> ${data.messageUSR}`);
         console.log(`<<Message DEV>> ${data.messageDEV}`);
-    return FAIL(bitacora);
+        return FAIL(bitacora);
     }
 };
 
@@ -692,7 +701,7 @@ const getJerarquiaPorEtiqueta = async (bitacora, params) => {
                 // Un documento raíz es aquel que no tiene un padre (IDVALORPA es null).
                 $match: {
                     IDETIQUETA: IDETIQUETA,
-                    IDVALORPA: null 
+                    IDVALORPA: null
                 }
             },
             {
@@ -830,7 +839,7 @@ const executeCrudOperations_Cosmos = async (bitacora, params, body) => {
     // Mapa para simular el estado de la DB durante la validación
     const tempDbState = { labels: new Map(), values: new Map() };
     // Mapa para guardar los documentos leídos para la FASE 2 (optimización)
-    const preReadDocs = new Map(); 
+    const preReadDocs = new Map();
 
     try {
         data.api = '/CRUD';
@@ -863,7 +872,7 @@ const executeCrudOperations_Cosmos = async (bitacora, params, body) => {
 
                 // Validar (hace lecturas de pre-verificación contra el estado real y simulado)
                 const existingDoc = await validateOperation_Cosmos(opDetails, containers, tempDbState);
-                
+
                 // Simular la operación en el estado temporal si la validación pasa
                 if (op.action === 'CREATE') {
                     // Guardamos el payload completo, más el 'id' de cosmos
@@ -890,7 +899,7 @@ const executeCrudOperations_Cosmos = async (bitacora, params, body) => {
                 // Si falla, registrar el error
                 hasValidationErrors = true;
                 const { collection, action } = op;
-                
+
                 let errorCode = 'OPERATION_FAILED';
                 let errorMsg = error.message;
                 let payloadId = opDetails?.idValue || opDetails?.payload?.id || 'unknown';
@@ -901,7 +910,7 @@ const executeCrudOperations_Cosmos = async (bitacora, params, body) => {
                     errorCode = parts[1] || 'OPERATION_FAILED';
                     payloadId = parts[2] || payloadId;
                 }
-                
+
                 if (error.code === 409) { // 409 Conflict es el "Duplicate Key" de Cosmos
                     errorCode = 'DUPLICATE_KEY';
                     errorMsg = `Ya existe un documento con el ID '${payloadId}'.`;
@@ -920,7 +929,7 @@ const executeCrudOperations_Cosmos = async (bitacora, params, body) => {
 
         // --- REVISIÓN DE VALIDACIÓN ---
         data.dataRes = validationResults;
-        
+
         if (hasValidationErrors) {
             data.messageUSR = 'Una o más operaciones fallaron. No se guardó ningún cambio.';
             data.messageDEV = 'Validation failed. No commit was attempted.';
@@ -932,7 +941,7 @@ const executeCrudOperations_Cosmos = async (bitacora, params, body) => {
 
         // --- FASE 2: EJECUCIÓN REAL (NO ATÓMICA) ---
         // Si llegamos aquí, todas las validaciones fueron 'SUCCESS'
-        
+
         const commitPromises = operations.map(op => {
             const opDetails = parseOperation_Cosmos(op);
             // Recuperar el doc pre-leído si es un UPDATE
@@ -941,7 +950,7 @@ const executeCrudOperations_Cosmos = async (bitacora, params, body) => {
         });
 
         await Promise.all(commitPromises); // Si alguna falla aquí, se va al CATCH
-        
+
         data.messageUSR = 'Operaciones CRUD ejecutadas correctamente.';
         data.status = 200; // 200 OK
         bitacora = AddMSG(bitacora, data, 'OK', data.status, true);
@@ -949,7 +958,7 @@ const executeCrudOperations_Cosmos = async (bitacora, params, body) => {
 
     } catch (error) {
         // --- CATCH PRINCIPAL ---
-        
+
         // Si el error ya es una bitácora (lanzado desde el FAIL(bitacora)), no lo envolvemos de nuevo.
         if (error.finalRes) {
             return FAIL(error);
@@ -959,13 +968,13 @@ const executeCrudOperations_Cosmos = async (bitacora, params, body) => {
         data.messageDEV = data.messageDEV || error.message;
         data.messageUSR = data.messageUSR || "Error inesperado al procesar las operaciones.";
         data.dataRes = data.dataRes || validationResults;
-        
+
         bitacora = AddMSG(bitacora, data, 'FAIL');
-        
+
         console.log(`<<Message USR>> ${data.messageUSR}`);
         console.log(`<<Message DEV>> ${data.messageDEV}`);
 
-        return FAIL(bitacora); 
+        return FAIL(bitacora);
     }
 };
 
@@ -981,12 +990,12 @@ const validateOperation_Cosmos = async (opDetails, containers, tempDbState) => {
         if (tempDbState[coll].has(id)) {
             const simulatedItem = tempDbState[coll].get(id);
             // Si está marcado como borrado en la simulación, actuar como 404
-            if (simulatedItem._DELETED_) return null; 
+            if (simulatedItem._DELETED_) return null;
             return simulatedItem;
         }
         try {
             const { resource } = await containers[coll === 'labels' ? cosmosLabelsContainerId : cosmosValuesContainerId].item(id, id).read();
-            return resource;
+            return resource || null;
         } catch (error) {
             if (error.code === 404) return null;
             throw error; // Otro error de lectura
@@ -998,7 +1007,7 @@ const validateOperation_Cosmos = async (opDetails, containers, tempDbState) => {
             // Validar duplicados (en estado simulado O en DB real)
             const existingItem = await readItem(collection, idValue);
             if (existingItem) {
-                throw new Error( `Ya existe un documento con el ID '${idValue}'.|DUPLICATE_KEY|${idValue}`);
+                throw new Error(`Ya existe un documento con el ID '${idValue}'.|DUPLICATE_KEY|${idValue}`);
             }
 
             if (collection === 'values') {
@@ -1023,10 +1032,10 @@ const validateOperation_Cosmos = async (opDetails, containers, tempDbState) => {
                     }
                 }
             }
-        
+
         } else if (action === 'UPDATE') {
             const { id, updates } = payload;
-            
+
             // Validar que el documento exista (en estado simulado O en DB real)
             const existingDoc = await readItem(collection, idValue);
             if (!existingDoc) {
@@ -1043,7 +1052,7 @@ const validateOperation_Cosmos = async (opDetails, containers, tempDbState) => {
                 if (updates.IDETIQUETA) {
                     throw new Error(`La modificación de la etiqueta padre ('IDETIQUETA') de un valor no está permitida.|PARENT_LABEL_MODIFICATION_NOT_ALLOWED|${id}`);
                 }
-                
+
                 // Si IDVALORPA es explícitamente null, está bien (desconectar)
                 if (Object.prototype.hasOwnProperty.call(updates, 'IDVALORPA') && updates.IDVALORPA !== null) {
                     // Evitar auto-parentesco
@@ -1063,7 +1072,7 @@ const validateOperation_Cosmos = async (opDetails, containers, tempDbState) => {
                 const { resource } = await container.item(idValue, idValue).read();
                 return resource;
             } catch (error) {
-                 throw new Error(`Documento con ${idField}=${idValue} no encontrado en DB real para update.|NOT_FOUND|${idValue}`);
+                throw new Error(`Documento con ${idField}=${idValue} no encontrado en DB real para update.|NOT_FOUND|${idValue}`);
             }
 
         } else if (action === 'DELETE') {
@@ -1091,7 +1100,7 @@ const runOperation_Cosmos = async (opDetails, containers, existingDoc) => {
     if (action === 'CREATE') {
         itemPayload.id = idValue;
     }
-    
+
     if (action === 'CREATE') {
         await container.items.create(itemPayload);
         return {
@@ -1102,9 +1111,9 @@ const runOperation_Cosmos = async (opDetails, containers, existingDoc) => {
         };
     } else if (action === 'UPDATE') {
         const { id, updates } = payload;
-        
+
         if (Object.keys(updates).length === 0) {
-             return {
+            return {
                 status: 'SUCCESS',
                 operation: 'UPDATE',
                 collection: collection,
@@ -1112,9 +1121,9 @@ const runOperation_Cosmos = async (opDetails, containers, existingDoc) => {
                 message: 'No updatable fields provided.'
             };
         }
-        
+
         if (!existingDoc) {
-             throw new Error(`Error interno: El documento ${id} para UPDATE no fue pre-leído.`);
+            throw new Error(`Error interno: El documento ${id} para UPDATE no fue pre-leído.`);
         }
 
         // Combinar los cambios
@@ -1127,7 +1136,7 @@ const runOperation_Cosmos = async (opDetails, containers, existingDoc) => {
 
         // Reemplazar el documento
         await container.item(idValue, idValue).replace(updatedDoc);
-        
+
         return {
             status: 'SUCCESS',
             operation: 'UPDATE',
@@ -1136,6 +1145,29 @@ const runOperation_Cosmos = async (opDetails, containers, existingDoc) => {
         };
     } else if (action === 'DELETE') {
         const { id } = payload;
+
+        // FIC: Cascade Delete - Si borramos una etiqueta, borrar sus valores hijos
+        if (collection === 'labels') {
+            const valuesContainer = containers[cosmosValuesContainerId];
+            // Buscar valores que tengan esta etiqueta como padre
+            const querySpec = {
+                query: "SELECT * FROM c WHERE c.IDETIQUETA = @idEtiqueta",
+                parameters: [{ name: "@idEtiqueta", value: id }]
+            };
+
+            try {
+                const { resources: childValues } = await valuesContainer.items.query(querySpec).fetchAll();
+
+                // Borrar cada valor encontrado
+                for (const val of childValues) {
+                    // IDVALOR es el id del documento
+                    await valuesContainer.item(val.id, val.id).delete();
+                }
+            } catch (error) {
+                console.error(`Error durante borrado en cascada para etiqueta ${id}:`, error);
+            }
+        }
+
         await container.item(id, id).delete(); // Asumimos id como clave de partición
         return {
             status: 'SUCCESS',
@@ -1160,7 +1192,7 @@ const getLabelsValues_Cosmos = async (bitacora, params) => {
 
         // 1. Obtener todas las etiquetas
         const { resources: labels } = await labelsContainer.items.readAll().fetchAll();
-        
+
         // 2. Obtener todos los valores
         const { resources: allValues } = await valuesContainer.items.readAll().fetchAll();
 
@@ -1191,7 +1223,7 @@ const getLabelsValues_Cosmos = async (bitacora, params) => {
             data.messageDEV = '<<AVISO>> No se encontraron elementos en el contenedor <<Labels>>.';
             throw Error(data.messageDEV);
         }
-        
+
         //FIC: Response settings on success
         data.messageUSR = "<<OK>> La extracción de los ETIQUETAS Y VALORES <<SI>> tuvo éxito.";
         data.dataRes = labelsWithValues;
@@ -1206,7 +1238,7 @@ const getLabelsValues_Cosmos = async (bitacora, params) => {
         bitacora = AddMSG(bitacora, data, "FAIL");
         console.log(`<<Message USR>> ${data.messageUSR}`);
         console.log(`<<Message DEV>> ${data.messageDEV}`);
-    return FAIL(bitacora);
+        return FAIL(bitacora);
     }
 };
 
@@ -1228,17 +1260,24 @@ const getEtiqueta_Cosmos = async (bitacora, params) => {
         data.api = "/getEtiqueta";
 
         const { labelsContainer } = await getCosmosContainers();
-        
+
         try {
             const { resource: etiqueta } = await labelsContainer.item(IDETIQUETA, IDETIQUETA).read();
-            
+
+            if (!etiqueta) {
+                data.status = 404;
+                data.messageUSR = `<<AVISO>> No se encontró la etiqueta con ID: ${IDETIQUETA}.`;
+                data.messageDEV = `<<AVISO>> El método item.read() no encontró resultados para la etiqueta con ID: ${IDETIQUETA}.`;
+                throw new Error(data.messageDEV);
+            }
+
             data.messageUSR = "<<OK>> La extracción de la etiqueta <<SI>> tuvo éxito.";
             data.dataRes = etiqueta;
             bitacora = AddMSG(bitacora, data, "OK", 200, true);
             return OK(bitacora);
 
         } catch (error) {
-             if (error.code === 404) {
+            if (error.code === 404) {
                 data.status = 404;
                 data.messageUSR = `<<AVISO>> No se encontró la etiqueta con ID: ${IDETIQUETA}.`;
                 data.messageDEV = `<<AVISO>> El método item.read() no encontró resultados para la etiqueta con ID: ${IDETIQUETA}.`;
@@ -1277,7 +1316,7 @@ const getJerarquiaPorEtiqueta_Cosmos = async (bitacora, params) => {
         data.api = "/getJerarquia";
 
         const { valuesContainer } = await getCosmosContainers();
-        
+
         // Consultar todos los valores para esa etiqueta
         const querySpec = {
             query: "SELECT * FROM c WHERE c.IDETIQUETA = @idEtiqueta",
@@ -1309,9 +1348,9 @@ const getJerarquiaPorEtiqueta_Cosmos = async (bitacora, params) => {
                 arbolesCompletos.push(nodo);
             }
         }
-        
+
         if (arbolesCompletos.length === 0 && allValues.length > 0) {
-             data.status = 404;
+            data.status = 404;
             data.messageUSR = `<<AVISO>> No se encontraron elementos raíz con la etiqueta: ${IDETIQUETA}.`;
             data.messageDEV = `<<AVISO>> Se encontraron valores, pero ninguno es raíz (IDVALORPA es null).`;
             throw new Error(data.messageDEV);
@@ -1355,7 +1394,14 @@ const getValor_Cosmos = async (bitacora, params) => {
 
         try {
             const { resource: valor } = await valuesContainer.item(IDVALOR, IDVALOR).read();
-            
+
+            if (!valor) {
+                data.status = 404;
+                data.messageUSR = `<<AVISO>> No se encontró el valor con ID: ${IDVALOR}.`;
+                data.messageDEV = `<<AVISO>> El método item.read() no encontró resultados para el valor con ID: ${IDVALOR}.`;
+                throw new Error(data.messageDEV);
+            }
+
             data.messageUSR = "<<OK>> La extracción del valor <<SI>> tuvo éxito.";
             data.dataRes = valor;
             bitacora = AddMSG(bitacora, data, "OK", 200, true);
