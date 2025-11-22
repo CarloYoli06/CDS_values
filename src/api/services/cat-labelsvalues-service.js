@@ -137,6 +137,20 @@ export async function crudLabelsValues(req) {
             });
             break;
 
+          case "getLabelWithValues":
+            //FIC: Get Label with all its Values by IDETIQUETA
+            //------------------------------------------------------
+            bitacora = await getLabelWithValues(bitacora, params).then(
+              (bitacora) => {
+                if (!bitacora.success) {
+                  bitacora.finalRes = true;
+                  throw bitacora;
+                }
+                return bitacora;
+              }
+            );
+            break;
+
           case "CRUD":
             //FIC: Add, update and delete etiquetas y Method
             //------------------------------------------------------
@@ -200,6 +214,17 @@ export async function crudLabelsValues(req) {
             break;
           case "getValor":
             bitacora = await getValor_Cosmos(bitacora, params).then(
+              (bitacora) => {
+                if (!bitacora.success) {
+                  bitacora.finalRes = true;
+                  throw bitacora;
+                }
+                return bitacora;
+              }
+            );
+            break;
+          case "getLabelWithValues":
+            bitacora = await getLabelWithValues_Cosmos(bitacora, params).then(
               (bitacora) => {
                 if (!bitacora.success) {
                   bitacora.finalRes = true;
@@ -917,6 +942,62 @@ const getValor = async (bitacora, params) => {
   }
 };
 
+const getLabelWithValues = async (bitacora, params) => {
+  let data = DATA();
+  try {
+    const { IDETIQUETA } = params.paramsQuery;
+
+    if (!IDETIQUETA) {
+      data.status = 400;
+      data.messageUSR = "<<AVISO>> El parámetro IDETIQUETA es requerido.";
+      data.messageDEV =
+        "<<AVISO>> El parámetro IDETIQUETA no fue proporcionado en la consulta.";
+      throw new Error(data.messageDEV);
+    }
+
+    bitacora.process = "Extraer etiqueta con valores por ID [MongoDB]";
+    data.process = `Extraer etiqueta con valores por ID de ${bitacora.dbServer}`;
+    data.method = "GET";
+    data.api = "/getLabelWithValues";
+
+    const result = await Etiqueta.aggregate([
+      { $match: { IDETIQUETA: IDETIQUETA } },
+      {
+        $lookup: {
+          from: "Valor",
+          localField: "IDETIQUETA",
+          foreignField: "IDETIQUETA",
+          as: "valores",
+        },
+      },
+    ]);
+
+    if (!result || result.length === 0) {
+      data.status = 404;
+      data.messageUSR = `<<AVISO>> No se encontró la etiqueta con ID: ${IDETIQUETA}.`;
+      data.messageDEV = `<<AVISO>> La agregación no encontró resultados para la etiqueta con ID: ${IDETIQUETA}.`;
+      throw new Error(data.messageDEV);
+    }
+
+    data.messageUSR =
+      "<<OK>> La extracción de la etiqueta y sus valores <<SI>> tuvo éxito.";
+    data.dataRes = result[0];
+    bitacora = AddMSG(bitacora, data, "OK", 200, true);
+    return OK(bitacora);
+  } catch (error) {
+    data.status = data.status || 500;
+    data.messageDEV = data.messageDEV || error.message;
+    data.messageUSR =
+      data.messageUSR ||
+      "<<ERROR>> La extracción de la etiqueta y sus valores <<NO>> tuvo éxito.";
+    data.dataRes = data.dataRes || error;
+    bitacora = AddMSG(bitacora, data, "FAIL");
+    console.log(`<<Message USR>> ${data.messageUSR}`);
+    console.log(`<<Message DEV>> ${data.messageDEV}`);
+    return FAIL(bitacora);
+  }
+};
+
 //********************************************************** */
 //******************* COSMOS DB METHODS ******************* */
 //********************************************************** */
@@ -1610,6 +1691,80 @@ const getValor_Cosmos = async (bitacora, params) => {
     data.messageDEV = data.messageDEV || error.message;
     data.messageUSR =
       data.messageUSR || "<<ERROR>> La extracción del valor <<NO>> tuvo éxito.";
+    data.dataRes = data.dataRes || error;
+    bitacora = AddMSG(bitacora, data, "FAIL");
+    console.log(`<<Message USR>> ${data.messageUSR}`);
+    console.log(`<<Message DEV>> ${data.messageDEV}`);
+    return FAIL(bitacora);
+  }
+};
+
+const getLabelWithValues_Cosmos = async (bitacora, params) => {
+  let data = DATA();
+  try {
+    const { IDETIQUETA } = params.paramsQuery;
+
+    if (!IDETIQUETA) {
+      data.status = 400;
+      data.messageUSR = "<<AVISO>> El parámetro IDETIQUETA es requerido.";
+      data.messageDEV =
+        "<<AVISO>> El parámetro IDETIQUETA no fue proporcionado en la consulta.";
+      throw new Error(data.messageDEV);
+    }
+
+    bitacora.process = "Extraer etiqueta con valores por ID [CosmosDB]";
+    data.process = `Extraer etiqueta con valores por ID de ${bitacora.dbServer}`;
+    data.method = "GET";
+    data.api = "/getLabelWithValues";
+
+    const { labelsContainer, valuesContainer } = await getCosmosContainers();
+
+    // 1. Obtener la etiqueta
+    let etiqueta;
+    try {
+      const { resource } = await labelsContainer
+        .item(IDETIQUETA, IDETIQUETA)
+        .read();
+      etiqueta = resource;
+    } catch (error) {
+      if (error.code === 404) {
+        // Se manejará abajo
+        etiqueta = null;
+      } else {
+        throw error;
+      }
+    }
+
+    if (!etiqueta) {
+      data.status = 404;
+      data.messageUSR = `<<AVISO>> No se encontró la etiqueta con ID: ${IDETIQUETA}.`;
+      data.messageDEV = `<<AVISO>> El método item.read() no encontró resultados para la etiqueta con ID: ${IDETIQUETA}.`;
+      throw new Error(data.messageDEV);
+    }
+
+    // 2. Obtener los valores asociados
+    const querySpec = {
+      query: "SELECT * FROM c WHERE c.IDETIQUETA = @idEtiqueta",
+      parameters: [{ name: "@idEtiqueta", value: IDETIQUETA }],
+    };
+    const { resources: values } = await valuesContainer.items
+      .query(querySpec)
+      .fetchAll();
+
+    // 3. Combinar resultados
+    etiqueta.valores = values || [];
+
+    data.messageUSR =
+      "<<OK>> La extracción de la etiqueta y sus valores <<SI>> tuvo éxito.";
+    data.dataRes = etiqueta;
+    bitacora = AddMSG(bitacora, data, "OK", 200, true);
+    return OK(bitacora);
+  } catch (error) {
+    data.status = data.status || 500;
+    data.messageDEV = data.messageDEV || error.message;
+    data.messageUSR =
+      data.messageUSR ||
+      "<<ERROR>> La extracción de la etiqueta y sus valores <<NO>> tuvo éxito.";
     data.dataRes = data.dataRes || error;
     bitacora = AddMSG(bitacora, data, "FAIL");
     console.log(`<<Message USR>> ${data.messageUSR}`);
