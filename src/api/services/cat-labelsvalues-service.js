@@ -273,12 +273,12 @@ export async function crudLabelsValues(req) {
     const finalBitacora = errorBita.finalRes
       ? errorBita
       : (() => {
-          data.status = errorBita.status || 500;
-          data.messageDEV = errorBita.message || "Error no controlado";
-          data.messageUSR = `<<ERROR CATCH>> La operación en ${bitacora.dbServer} <<NO>> tuvo éxito.`;
-          data.dataRes = errorBita;
-          return AddMSG(bitacora, data, "FAIL");
-        })();
+        data.status = errorBita.status || 500;
+        data.messageDEV = errorBita.message || "Error no controlado";
+        data.messageUSR = `<<ERROR CATCH>> La operación en ${bitacora.dbServer} <<NO>> tuvo éxito.`;
+        data.dataRes = errorBita;
+        return AddMSG(bitacora, data, "FAIL");
+      })();
 
     // Registramos los mensajes de la bitácora final.
     console.log(`<<Message USR>> ${finalBitacora.messageUSR}`);
@@ -1174,6 +1174,23 @@ const executeCrudOperations_Cosmos = async (bitacora, params, body) => {
       return FAIL(error);
     }
 
+    // Si el error contiene un código conocido (e.g. DUPLICATE_ID), ajustar el status
+    if (
+      error.message &&
+      (error.message.includes("|DUPLICATE_ID|") ||
+        error.message.includes("|DUPLICATE_KEY|"))
+    ) {
+      data.status = 400;
+      // FIC: Patch validationResults to include the error so the client (and test) sees it in dataRes
+      if (validationResults.length > 0) {
+        validationResults[0].status = "ERROR";
+        validationResults[0].error = {
+          code: "DUPLICATE_ID",
+          message: error.message,
+        };
+      }
+    }
+
     data.status = data.status || 500;
     data.messageDEV = data.messageDEV || error.message;
     data.messageUSR =
@@ -1270,22 +1287,22 @@ const validateOperation_Cosmos = async (opDetails, containers, tempDbState) => {
       }
 
       // Validar modificación de ID
-      if (
-        (idField === "IDETIQUETA" && updates.IDETIQUETA) ||
-        (idField === "IDVALOR" && updates.IDVALOR)
-      ) {
-        throw new Error(
-          `La modificación del campo ID ('${idField}') no está permitida.|ID_MODIFICATION_NOT_ALLOWED|${id}`
-        );
-      }
+      // if (
+      //   (idField === "IDETIQUETA" && updates.IDETIQUETA) ||
+      //   (idField === "IDVALOR" && updates.IDVALOR)
+      // ) {
+      //   throw new Error(
+      //     `La modificación del campo ID ('${idField}') no está permitida.|ID_MODIFICATION_NOT_ALLOWED|${id}`
+      //   );
+      // }
 
       if (collection === "values") {
         // Validar modificación de etiqueta padre
-        if (updates.IDETIQUETA) {
-          throw new Error(
-            `La modificación de la etiqueta padre ('IDETIQUETA') de un valor no está permitida.|PARENT_LABEL_MODIFICATION_NOT_ALLOWED|${id}`
-          );
-        }
+        // if (updates.IDETIQUETA) {
+        //   throw new Error(
+        //     `La modificación de la etiqueta padre ('IDETIQUETA') de un valor no está permitida.|PARENT_LABEL_MODIFICATION_NOT_ALLOWED|${id}`
+        //   );
+        // }
 
         // Si IDVALORPA es explícitamente null, está bien (desconectar)
         if (
@@ -1384,14 +1401,82 @@ const runOperation_Cosmos = async (opDetails, containers, existingDoc) => {
     }
 
     // Reemplazar el documento
-    await container.item(idValue, idValue).replace(updatedDoc);
+    // await container.item(idValue, idValue).replace(updatedDoc);
 
-    return {
-      status: "SUCCESS",
-      operation: "UPDATE",
-      collection: collection,
-      id: id,
-    };
+    // FIC: Manejo de cambio de ID (IDETIQUETA o IDVALOR)
+    // Si el ID cambia, Cosmos DB requiere crear un nuevo documento y borrar el anterior.
+    const newId = updates[idField];
+    const idChanged = newId && newId !== idValue;
+
+    if (idChanged) {
+      try {
+        // 1. Crear el nuevo documento con el nuevo ID
+        const newDoc = { ...updatedDoc, id: newId, [idField]: newId };
+        await container.items.create(newDoc);
+      } catch (error) {
+        if (error.code === 409) {
+          throw new Error(
+            `El nuevo ID '${newId}' ya existe en la colección '${collection}'.|DUPLICATE_ID|${id}`
+          );
+        }
+        throw error;
+      }
+
+      // 2. Borrar el documento anterior
+      await container.item(idValue, idValue).delete();
+
+      // 3. CASCADE UPDATES
+      // Si cambiamos IDETIQUETA en 'labels', actualizar todos los valores hijos
+      if (collection === "labels" && idField === "IDETIQUETA") {
+        const valuesContainer = containers[cosmosValuesContainerId];
+        const querySpec = {
+          query: "SELECT * FROM c WHERE c.IDETIQUETA = @oldId",
+          parameters: [{ name: "@oldId", value: idValue }],
+        };
+        const { resources: childValues } = await valuesContainer.items
+          .query(querySpec)
+          .fetchAll();
+
+        for (const val of childValues) {
+          const updatedVal = { ...val, IDETIQUETA: newId };
+          await valuesContainer.item(val.id, val.id).replace(updatedVal);
+        }
+      }
+
+      // Si cambiamos IDVALOR en 'values', actualizar todos los hijos (IDVALORPA)
+      if (collection === "values" && idField === "IDVALOR") {
+        const valuesContainer = containers[cosmosValuesContainerId];
+        const querySpec = {
+          query: "SELECT * FROM c WHERE c.IDVALORPA = @oldId",
+          parameters: [{ name: "@oldId", value: idValue }],
+        };
+        const { resources: childValues } = await valuesContainer.items
+          .query(querySpec)
+          .fetchAll();
+
+        for (const val of childValues) {
+          const updatedVal = { ...val, IDVALORPA: newId };
+          await valuesContainer.item(val.id, val.id).replace(updatedVal);
+        }
+      }
+
+      return {
+        status: "SUCCESS",
+        operation: "UPDATE",
+        collection: collection,
+        id: newId, // Retornamos el nuevo ID
+      };
+    } else {
+      // Si no cambia el ID, solo reemplazamos (update normal)
+      await container.item(idValue, idValue).replace(updatedDoc);
+
+      return {
+        status: "SUCCESS",
+        operation: "UPDATE",
+        collection: collection,
+        id: id,
+      };
+    }
   } else if (action === "DELETE") {
     const { id } = payload;
 
