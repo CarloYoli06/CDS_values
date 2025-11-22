@@ -337,38 +337,142 @@ describe("Pruebas automatizadas para la validar el funcionamiento de las apis en
       "La etiqueta de limpieza no se pudo eliminar"
     );
   });
-it('No debería permitir la modificación del IDETIQUETA de un valor existente', async () => {
+  it("No debería permitir la modificación del IDETIQUETA de un valor existente", async () => {
     const originalLabelId = `ORIGINAL_LABEL_${Date.now()}`;
     const newLabelId = `NEW_LABEL_${Date.now()}`;
     const valueId = `VALUE_MOVE_TEST_${Date.now()}`;
 
     // 1. SETUP: Create two labels and one value
-    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "labels", "action": "CREATE", "payload": { "IDETIQUETA": originalLabelId, "ETIQUETA": "Original Label" } }] }).expect(200);
-    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "labels", "action": "CREATE", "payload": { "IDETIQUETA": newLabelId, "ETIQUETA": "New Label" } }] }).expect(200);
-    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "values", "action": "CREATE", "payload": { "IDETIQUETA": originalLabelId, "IDVALOR": valueId, "VALOR": "Test Value" } }] }).expect(200);
+    await request
+      .post(
+        "/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser"
+      )
+      .send({
+        operations: [
+          {
+            collection: "labels",
+            action: "CREATE",
+            payload: {
+              IDETIQUETA: originalLabelId,
+              ETIQUETA: "Original Label",
+            },
+          },
+        ],
+      })
+      .expect(200);
+    await request
+      .post(
+        "/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser"
+      )
+      .send({
+        operations: [
+          {
+            collection: "labels",
+            action: "CREATE",
+            payload: { IDETIQUETA: newLabelId, ETIQUETA: "New Label" },
+          },
+        ],
+      })
+      .expect(200);
+    await request
+      .post(
+        "/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser"
+      )
+      .send({
+        operations: [
+          {
+            collection: "values",
+            action: "CREATE",
+            payload: {
+              IDETIQUETA: originalLabelId,
+              IDVALOR: valueId,
+              VALOR: "Test Value",
+            },
+          },
+        ],
+      })
+      .expect(200);
 
     // 2. ATTEMPT to update the value's parent label (IDETIQUETA)
     const updateResponse = await request
-      .post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser')
-      .send({ "operations": [{ "collection": "values", "action": "UPDATE", "payload": { "id": valueId, "updates": { "IDETIQUETA": newLabelId, "VALOR": "Value Updated Name" } } }] })
+      .post(
+        "/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser"
+      )
+      .send({
+        operations: [
+          {
+            collection: "values",
+            action: "UPDATE",
+            payload: {
+              id: valueId,
+              updates: { IDETIQUETA: newLabelId, VALOR: "Value Updated Name" },
+            },
+          },
+        ],
+      })
       .expect(400);
 
     // 3. VERIFY the error response
     // expect(updateResponse.body.success).to.be.false;
-    expect(updateResponse.body.error.innererror.data[0].dataRes[0].status).to.equal('ERROR');
-    expect(updateResponse.body.error.innererror.data[0].dataRes[0].error.code).to.equal('PARENT_LABEL_MODIFICATION_NOT_ALLOWED');
+    expect(
+      updateResponse.body.error.innererror.data[0].dataRes[0].status
+    ).to.equal("ERROR");
+    expect(
+      updateResponse.body.error.innererror.data[0].dataRes[0].error.code
+    ).to.equal("PARENT_LABEL_MODIFICATION_NOT_ALLOWED");
 
     // 4. VERIFY that the value has not changed its parent or other fields
-    const readResponse = await request.post(`/api/cat/crudLabelsValues?ProcessType=getValor&DBServer=MongoDB&LoggedUser=TestUser&IDVALOR=${valueId}`).send({});
+    const readResponse = await request
+      .post(
+        `/api/cat/crudLabelsValues?ProcessType=getValor&DBServer=MongoDB&LoggedUser=TestUser&IDVALOR=${valueId}`
+      )
+      .send({});
     expect(readResponse.status).to.equal(200);
-    expect(readResponse.body.data[0].dataRes.IDETIQUETA).to.equal(originalLabelId); // Should be the original label
+    expect(readResponse.body.data[0].dataRes.IDETIQUETA).to.equal(
+      originalLabelId
+    ); // Should be the original label
     expect(readResponse.body.data[0].dataRes.VALOR).to.equal("Test Value"); // Should NOT have been updated
 
     // 5. CLEANUP
-    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "values", "action": "DELETE", "payload": { "id": valueId } }] }).expect(200);
-    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "labels", "action": "DELETE", "payload": { "id": originalLabelId } }] }).expect(200);
-    await request.post('/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser').send({ "operations": [{ "collection": "labels", "action": "DELETE", "payload": { "id": newLabelId } }] }).expect(200);
-  }); 
+    await request
+      .post(
+        "/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser"
+      )
+      .send({
+        operations: [
+          { collection: "values", action: "DELETE", payload: { id: valueId } },
+        ],
+      })
+      .expect(200);
+    await request
+      .post(
+        "/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser"
+      )
+      .send({
+        operations: [
+          {
+            collection: "labels",
+            action: "DELETE",
+            payload: { id: originalLabelId },
+          },
+        ],
+      })
+      .expect(200);
+    await request
+      .post(
+        "/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser"
+      )
+      .send({
+        operations: [
+          {
+            collection: "labels",
+            action: "DELETE",
+            payload: { id: newLabelId },
+          },
+        ],
+      })
+      .expect(200);
+  });
 
   it("Debería crear una etiqueta y un valor para esa etiqueta en la misma transacción", async () => {
     const transacLabelId = `TRANSAC_LABEL_${Date.now()}`;
@@ -1224,5 +1328,84 @@ it('No debería permitir la modificación del IDETIQUETA de un valor existente',
       )
       .send({ operations: cleanupOps })
       .expect(200);
+  });
+
+  it("Debería borrar en cascada los valores cuando se borra una etiqueta", async () => {
+    const labelId = `LABEL_CASCADE_DEL_${Date.now()}`;
+    const valueId1 = `VAL_DEL_1_${Date.now()}`;
+    const valueId2 = `VAL_DEL_2_${Date.now()}`;
+
+    // 1. SETUP: Create label and values
+    const setupOps = [
+      {
+        collection: "labels",
+        action: "CREATE",
+        payload: { IDETIQUETA: labelId, ETIQUETA: "Cascade Delete Label" },
+      },
+      {
+        collection: "values",
+        action: "CREATE",
+        payload: {
+          IDETIQUETA: labelId,
+          IDVALOR: valueId1,
+          VALOR: "Value 1",
+        },
+      },
+      {
+        collection: "values",
+        action: "CREATE",
+        payload: {
+          IDETIQUETA: labelId,
+          IDVALOR: valueId2,
+          VALOR: "Value 2",
+        },
+      },
+    ];
+
+    await request
+      .post(
+        "/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser"
+      )
+      .send({ operations: setupOps })
+      .expect(200);
+
+    // 2. DELETE Label
+    await request
+      .post(
+        "/api/cat/crudLabelsValues?ProcessType=CRUD&DBServer=MongoDB&LoggedUser=TestUser"
+      )
+      .send({
+        operations: [
+          {
+            collection: "labels",
+            action: "DELETE",
+            payload: { id: labelId },
+          },
+        ],
+      })
+      .expect(200);
+
+    // 3. VERIFY Label is gone
+    await request
+      .post(
+        `/api/cat/crudLabelsValues?ProcessType=getEtiqueta&DBServer=MongoDB&LoggedUser=TestUser&IDETIQUETA=${labelId}`
+      )
+      .send({})
+      .expect(404);
+
+    // 4. VERIFY Values are gone (Cascade Delete)
+    await request
+      .post(
+        `/api/cat/crudLabelsValues?ProcessType=getValor&DBServer=MongoDB&LoggedUser=TestUser&IDVALOR=${valueId1}`
+      )
+      .send({})
+      .expect(404);
+
+    await request
+      .post(
+        `/api/cat/crudLabelsValues?ProcessType=getValor&DBServer=MongoDB&LoggedUser=TestUser&IDVALOR=${valueId2}`
+      )
+      .send({})
+      .expect(404);
   });
 });

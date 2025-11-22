@@ -432,29 +432,37 @@ const runOperation = async (opDetails, session, createdDocsCache = null) => {
       }
 
       // 2. SEGUNDO: Buscar si el valor padre existe en la base de datos
-      const parentValue = await Valor.findOne({ IDVALOR: updates.IDVALORPA }).session(session);
+      const parentValue = await Valor.findOne({
+        IDVALOR: updates.IDVALORPA,
+      }).session(session);
       if (!parentValue) {
-           throw new Error(`El IDVALORPA '${updates.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${id}`);
+        throw new Error(
+          `El IDVALORPA '${updates.IDVALORPA}' no existe en la colección de valores.|PARENT_NOT_FOUND|${id}`
+        );
       }
     }
     // --- FIN DE LA VALIDACIÓN ---
 
     // [NUEVO] Validación explícita: Verificar que el nuevo ID no exista ya.
     if (updates[idField] && updates[idField] !== id) {
-        const existingDoc = await model.findOne({ [idField]: updates[idField] }).session(session);
-        if (existingDoc) {
-            throw new Error(`El nuevo ID '${updates[idField]}' ya existe en la colección '${collection}'.|DUPLICATE_ID|${id}`);
-        }
+      const existingDoc = await model
+        .findOne({ [idField]: updates[idField] })
+        .session(session);
+      if (existingDoc) {
+        throw new Error(
+          `El nuevo ID '${updates[idField]}' ya existe en la colección '${collection}'.|DUPLICATE_ID|${id}`
+        );
+      }
     }
 
     if (Object.keys(updates).length === 0) {
-        return {
-            status: 'SUCCESS',
-            operation: 'UPDATE',
-            collection: collection,
-            id: id,
-            message: 'No updatable fields provided or only ID field was provided.'
-        };
+      return {
+        status: "SUCCESS",
+        operation: "UPDATE",
+        collection: collection,
+        id: id,
+        message: "No updatable fields provided or only ID field was provided.",
+      };
     }
 
     const updatedDoc = await model.findOneAndUpdate(
@@ -509,6 +517,13 @@ const runOperation = async (opDetails, session, createdDocsCache = null) => {
         `Documento con ${idField}=${id} no encontrado.|NOT_FOUND|${id}`
       );
     }
+
+    // --- CASCADE DELETE FOR LABELS ---
+    // Si se borra una etiqueta, borrar todos sus valores asociados
+    if (collection === "labels") {
+      await Valor.deleteMany({ IDETIQUETA: id }, { session });
+    }
+
     return {
       status: "SUCCESS",
       operation: "DELETE",
