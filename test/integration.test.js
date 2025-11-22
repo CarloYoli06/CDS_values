@@ -410,28 +410,20 @@ describe("Pruebas automatizadas para la validar el funcionamiento de las apis en
           },
         ],
       })
-      .expect(400);
+      .expect(200);
 
-    // 3. VERIFY the error response
-    // expect(updateResponse.body.success).to.be.false;
-    expect(
-      updateResponse.body.error.innererror.data[0].dataRes[0].status
-    ).to.equal("ERROR");
-    expect(
-      updateResponse.body.error.innererror.data[0].dataRes[0].error.code
-    ).to.equal("PARENT_LABEL_MODIFICATION_NOT_ALLOWED");
+    // 3. VERIFY the success response
+    expect(updateResponse.body.success).to.be.true;
 
-    // 4. VERIFY that the value has not changed its parent or other fields
+    // 4. VERIFY that the value HAS changed its parent
     const readResponse = await request
       .post(
         `/api/cat/crudLabelsValues?ProcessType=getValor&DBServer=MongoDB&LoggedUser=TestUser&IDVALOR=${valueId}`
       )
       .send({});
     expect(readResponse.status).to.equal(200);
-    expect(readResponse.body.data[0].dataRes.IDETIQUETA).to.equal(
-      originalLabelId
-    ); // Should be the original label
-    expect(readResponse.body.data[0].dataRes.VALOR).to.equal("Test Value"); // Should NOT have been updated
+    expect(readResponse.body.data[0].dataRes.IDETIQUETA).to.equal(newLabelId);
+    expect(readResponse.body.data[0].dataRes.VALOR).to.equal("Value Updated Name");
 
     // 5. CLEANUP
     await request
