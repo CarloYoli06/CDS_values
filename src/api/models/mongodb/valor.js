@@ -95,6 +95,6 @@ const ValorSchema = new mongoose.Schema({
 });
 
 // Se crea y exporta el modelo. MongoDB creará una colección llamada 'valores'.
-const valor = mongoose.model('Valor', ValorSchema,'Valor');
+const valor = mongoose.model('ZTVALUES', ValorSchema,'ZTVALUES');
 
 export default valor;

@@ -1,99 +1,106 @@
 // models/mongodb/Etiqueta.js
 
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 /**
  * ## DetailRegSchema (Subdocumento)
  * Define la estructura para el historial de cambios de un registro.
  */
-const DetailRegSchema = new mongoose.Schema({
-    CURRENT: { 
-        type: Boolean, 
-        default: true 
+const DetailRegSchema = new mongoose.Schema(
+  {
+    CURRENT: {
+      type: Boolean,
+      default: true,
     },
-    REGDATE: { 
-        type: Date, 
-        default: Date.now 
+    REGDATE: {
+      type: Date,
+      default: Date.now,
     },
-    REGTIME: { 
-        type: String 
+    REGTIME: {
+      type: String,
     },
-    REGUSER: { 
-        type: String 
-    }
-}, { _id: false });
+    REGUSER: {
+      type: String,
+    },
+  },
+  { _id: false }
+);
 
 /**
  * ## DetailRowSchema (Subdocumento)
  * Define el objeto que contiene el estado y el historial de auditoría.
  */
-const DetailRowSchema = new mongoose.Schema({
-    ACTIVED: { 
-        type: Boolean, 
-        default: true 
+const DetailRowSchema = new mongoose.Schema(
+  {
+    ACTIVED: {
+      type: Boolean,
+      default: true,
     },
-    DELETED: { 
-        type: Boolean, 
-        default: false 
+    DELETED: {
+      type: Boolean,
+      default: false,
     },
-    DETAIL_ROW_REG: [DetailRegSchema] // Un array de registros de historial
-}, { _id: false });
+    DETAIL_ROW_REG: [DetailRegSchema], // Un array de registros de historial
+  },
+  { _id: false }
+);
 
 /**
  * ## EtiquetaSchema (Modelo Principal)
- * Representa la etiqueta o categoría principal que se guardará en la 
+ * Representa la etiqueta o categoría principal que se guardará en la
  * colección 'etiquetas'.
  */
-const EtiquetaSchema = new mongoose.Schema({
-    IDSOCIEDAD: { 
-        type: Number, 
-        
+const EtiquetaSchema = new mongoose.Schema(
+  {
+    IDSOCIEDAD: {
+      type: Number,
     },
-    IDCEDI: { 
-        type: Number, 
-        
+    IDCEDI: {
+      type: Number,
     },
-    IDETIQUETA: { 
-        type: String, 
-        required: true,
-        unique: true // Es buena práctica asegurar que sea único
+    IDETIQUETA: {
+      type: String,
+      required: true,
+      unique: true, // Es buena práctica asegurar que sea único
     },
-    ETIQUETA: { 
-        type: String, 
-        required: true 
+    ETIQUETA: {
+      type: String,
+      required: true,
     },
-    INDICE: { 
-        type: String 
+    INDICE: {
+      type: String,
     },
-    COLECCION: { 
-        type: String 
+    COLECCION: {
+      type: String,
     },
-    SECCION: { 
-        type: String 
+    SECCION: {
+      type: String,
     },
-    SECUENCIA: { 
-        type: Number 
+    SECUENCIA: {
+      type: Number,
     },
-    IMAGEN: { 
-        type: String 
+    IMAGEN: {
+      type: String,
     },
-    ROUTE: { 
-        type: String 
+    ROUTE: {
+      type: String,
     },
-    DESCRIPCION: { 
-        type: String 
+    DESCRIPCION: {
+      type: String,
     },
     // Se anida el objeto de auditoría. No es un array.
-    DETAIL_ROW: { 
-        type: DetailRowSchema,
-        default: () => ({})
-    }
-}, {
+    DETAIL_ROW: {
+      type: DetailRowSchema,
+      default: () => ({}),
+    },
+  },
+  {
     // timestamps: true añade automáticamente createdAt y updatedAt.
-    timestamps: true 
-});
+    timestamps: true,
+  }
+);
 
 // Se crea y exporta el modelo. MongoDB creará una colección llamada 'etiquetas'.
-const etiqueta = mongoose.model('Etiqueta', EtiquetaSchema,'Etiqueta');
+const etiqueta = mongoose.model("ZTLABELS", EtiquetaSchema, "ZTLABELS");
 
 export default etiqueta;

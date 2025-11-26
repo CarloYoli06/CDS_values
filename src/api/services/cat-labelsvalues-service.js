@@ -850,7 +850,7 @@ const getJerarquiaPorEtiqueta = async (bitacora, params) => {
       {
         // Paso 2: Para CADA raíz encontrada, buscar a TODOS sus descendientes.
         $graphLookup: {
-          from: "Valor", // El nombre real de tu colección de valores
+          from: "ZTVALUES", // El nombre real de tu colección de valores
           startWith: "$IDVALOR", // Empezar con el IDVALOR del documento raíz
           connectFromField: "IDVALOR", // El campo del padre (el que se conecta "desde")
           connectToField: "IDVALORPA", // El campo del hijo (el que se conecta "hacia")
