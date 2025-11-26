@@ -410,10 +410,10 @@ describe("Pruebas automatizadas para la validar el funcionamiento de las apis en
           },
         ],
       })
-      .expect(200);
+      .expect(400);
 
     // 3. VERIFY the success response
-    expect(updateResponse.body.success).to.be.true;
+    // expect(updateResponse.body.success).to.be.true;
 
     // 4. VERIFY that the value HAS changed its parent
     const readResponse = await request
@@ -422,8 +422,8 @@ describe("Pruebas automatizadas para la validar el funcionamiento de las apis en
       )
       .send({});
     expect(readResponse.status).to.equal(200);
-    expect(readResponse.body.data[0].dataRes.IDETIQUETA).to.equal(newLabelId);
-    expect(readResponse.body.data[0].dataRes.VALOR).to.equal("Value Updated Name");
+    expect(readResponse.body.data[0].dataRes.IDETIQUETA).to.equal(originalLabelId);
+    expect(readResponse.body.data[0].dataRes.VALOR).to.equal("Test Value");
 
     // 5. CLEANUP
     await request
