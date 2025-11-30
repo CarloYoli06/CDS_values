@@ -737,7 +737,7 @@ const getLabelsValues = async (bitacora, params) => {
     const labelsWithValues = await Etiqueta.aggregate([
       {
         $lookup: {
-          from: "Valor", // The name of the values collection
+          from: "ZTVALUES", // The name of the values collection
           localField: "IDETIQUETA",
           foreignField: "IDETIQUETA",
           as: "valores",
