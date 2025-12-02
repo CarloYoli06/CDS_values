@@ -6,6 +6,7 @@
     "@azure/cosmos": "4.7.0",
     "@dotenvx/dotenvx": "github:dotenvx/dotenvx",
     "@sap/cds": "9",
+    "@sap/xssec": "^4.11.2",
     "cors": "2.8.5",
     "express": "4.21.2",
     "mongoose": "8.19.0"
