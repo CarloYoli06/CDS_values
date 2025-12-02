@@ -3,8 +3,7 @@
   "version": "1.0.0",
   "description": "A simple CAP project.",
   "dependencies": {
-    "@azure/cosmos": "^4.7.0",
-    "@cap-js/cds-test": "^0.4.0",
+    "@azure/cosmos": "4.7.0",
     "@dotenvx/dotenvx": "github:dotenvx/dotenvx",
     "@sap/cds": "9",
     "cors": "2.8.5",
@@ -13,9 +12,9 @@
   },
   "devDependencies": {
     "@cap-js/sqlite": "2",
-    "chai": "^5.1.1",
-    "mocha": "^10.4.0",
-    "supertest": "^7.0.0"
+    "chai": "5.1.1",
+    "mocha": "10.4.0",
+    "supertest": "7.0.0"
   },
   "scripts": {
     "build": "cds build",
